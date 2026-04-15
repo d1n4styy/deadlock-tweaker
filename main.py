@@ -107,7 +107,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.7"
+APP_VERSION = "1.1.8"
 DEFAULT_APP_TRANSPARENCY = 80
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -2172,20 +2172,6 @@ class MainWindow(QMainWindow):
                 self._on_update_error("Latest release has no downloadable asset")
                 return
 
-            # ── Confirmation dialog ──────────────────────────────────────────
-            self._upd_btn.setEnabled(True)
-            self._upd_btn.setText(self._upd_btn_default_text)
-            self._upd_btn.setStyleSheet(self._upd_btn_default_style)
-
-            msg = QMessageBox(self)
-            msg.setWindowTitle("Update available")
-            notes_block = f"\n\nWhat's new:\n{notes}" if notes else ""
-            msg.setText(f"Version {latest} is available.{notes_block}\n\nInstall update now?")
-            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            msg.setDefaultButton(QMessageBox.StandardButton.Yes)
-            if msg.exec() != QMessageBox.StandardButton.Yes:
-                self._reset_update_ui()
-                return
 
             # ── Prefer quick-patch if available ─────────────────────────────
             use_patch = bool(patch_url)
@@ -2267,7 +2253,7 @@ class MainWindow(QMainWindow):
             bat.write_text(
                 f"@echo off\n"
                 f":wait\n"
-                f"tasklist /fi \"PID eq {os.getpid()}\" | find /i \"python\" >nul 2>&1\n"
+                f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul 2>&1\n"
                 f"if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)\n"
                 f"move /y \"{update_exe}\" \"{current_exe}\"\n"
                 f"start \"\" \"{current_exe}\"\n"
@@ -2281,7 +2267,7 @@ class MainWindow(QMainWindow):
             )
         else:
             # Source mode: just open the downloaded exe (installer/portable)
-            subprocess.Popen([update_exe], shell=False)
+            os.startfile(str(update_exe))
 
         _clear_update_cache()
         QApplication.quit()
@@ -2526,6 +2512,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 

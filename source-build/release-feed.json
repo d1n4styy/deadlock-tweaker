@@ -1,9 +1,9 @@
 ﻿{
     "preferred_asset":  "DeadlockTweaker.exe",
-    "version":  "1.1.7",
-    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.7/DeadlockTweaker.exe",
+    "version":  "1.1.8",
+    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.8/DeadlockTweaker.exe",
     "repo":  "d1n4styy/deadlock-tweaker",
-    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.7",
+    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.8",
     "latest_api_url":  "https://api.github.com/repos/d1n4styy/deadlock-tweaker/releases/latest",
-    "notes":  "Update flow improvements"
+    "notes":  "Fix crash on Check for Updates: remove confirmation dialog, auto-download with progress bar, fix app restart after update"
 }
