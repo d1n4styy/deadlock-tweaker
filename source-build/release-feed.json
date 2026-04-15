@@ -1,9 +1,9 @@
 ﻿{
     "preferred_asset":  "DeadlockTweaker.exe",
-    "version":  "1.1.10",
-    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.10/DeadlockTweaker.exe",
+    "version":  "1.1.11",
+    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.11/DeadlockTweaker.exe",
     "repo":  "d1n4styy/deadlock-tweaker",
-    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.10",
+    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.11",
     "latest_api_url":  "https://api.github.com/repos/d1n4styy/deadlock-tweaker/releases/latest",
-    "notes":  "Fix updater version mismatch: ensure EXE replacement waits by PID and restore compatible quick-patch asset naming"
+    "notes":  "Fix updater version mismatch: reliable EXE replacement by PID and compatible quick-patch asset naming"
 }
