@@ -107,7 +107,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 DEFAULT_APP_TRANSPARENCY = 80
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -2156,6 +2156,12 @@ class MainWindow(QMainWindow):
         thread.start()
 
     def _on_update_result(self, data: dict):
+        # Defer all UI work so the signal + thread can fully unwind first.
+        # Calling QMessageBox.exec() directly inside a signal handler from
+        # a QThread causes a crash on Python 3.14 + PyQt6 6.11.
+        QTimer.singleShot(0, lambda: self._show_update_ui(data))
+
+    def _show_update_ui(self, data: dict):
         latest    = data.get("version", "0")
         notes     = data.get("notes", "")
         dl_url    = data.get("download_url", "")
@@ -2167,7 +2173,6 @@ class MainWindow(QMainWindow):
                 return
 
             # ── Confirmation dialog ──────────────────────────────────────────
-            # Reset button to default while dialog is open
             self._upd_btn.setEnabled(True)
             self._upd_btn.setText(self._upd_btn_default_text)
             self._upd_btn.setStyleSheet(self._upd_btn_default_style)
@@ -2521,6 +2526,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
