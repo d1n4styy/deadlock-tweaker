@@ -108,7 +108,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.0.5"
+APP_VERSION = "1.0.6"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -1753,6 +1753,7 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAutoFillBackground(False)
         self._drag_pos = None
+        self._blur_active = False
         self._watcher_thread = None
         self._game_timer = QTimer(self)
         self._cfg_timer = QTimer(self)
@@ -2016,6 +2017,12 @@ class MainWindow(QMainWindow):
         rect = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
         path = QPainterPath()
         path.addRoundedRect(rect, 16, 16)
+        # Fallback: when acrylic blur is not active, fill with dark background
+        # so the window is visible instead of completely transparent
+        if not self._blur_active:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(13, 13, 13, 230))
+            painter.drawPath(path)
         painter.setPen(QPen(QColor(255, 255, 255, 22), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
@@ -2041,9 +2048,14 @@ class MainWindow(QMainWindow):
 
     def _apply_blur(self, tries_left: int = 1):
         if _enable_acrylic_blur(int(self.winId()), tint_color=self._transparency_tint()):
+            self._blur_active = True
+            self.update()
             return
         if tries_left > 1:
             QTimer.singleShot(120, lambda: self._apply_blur(tries_left - 1))
+        else:
+            self._blur_active = False
+            self.update()
 
     def _on_game_status(self, running: bool):
         if running:
@@ -2462,15 +2474,34 @@ class MainWindow(QMainWindow):
 
 
     def nativeEvent(self, eventType, message):
-        """Handle WM_NCHITTEST for native drag (HTCAPTION) and edge resize."""
+        """Handle WM_NCHITTEST for native drag (HTCAPTION) and edge resize.
+
+        We avoid ctypes.from_address() which caused ACCESS_VIOLATION in frozen
+        (PyInstaller) builds.  Instead we copy the raw bytes via ctypes.string_at
+        (safe read) and decode the MSG manually, then use GetCursorPos instead of
+        the lParam screen coordinates for robustness.
+        """
         if eventType == b"windows_generic_MSG":
             import ctypes, ctypes.wintypes
-            msg = ctypes.wintypes.MSG.from_address(int(message))
-            if msg.message == 0x0084:  # WM_NCHITTEST
-                if self._win_maximized:
+            addr = int(message)
+            if addr == 0:
+                return super().nativeEvent(eventType, message)
+            try:
+                # Read only the 4-byte message-type field at offset +8 inside MSG.
+                # MSG on 64-bit Windows: HWND(8) + UINT(4) + pad(4) + WPARAM(8) + LPARAM(8) …
+                raw = ctypes.string_at(addr + 8, 4)
+                msg_id = int.from_bytes(raw, "little")
+            except Exception:
+                return super().nativeEvent(eventType, message)
+
+            if msg_id == 0x0084:  # WM_NCHITTEST
+                if getattr(self, "_win_maximized", False):
                     return super().nativeEvent(eventType, message)
-                x = ctypes.c_short(msg.lParam & 0xFFFF).value
-                y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
+
+                # Use GetCursorPos — avoids reading lParam from the MSG struct.
+                pt = ctypes.wintypes.POINT()
+                ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+                x, y = pt.x, pt.y
                 geo = self.frameGeometry()
                 lx = x - geo.x()
                 ly = y - geo.y()
@@ -2521,6 +2552,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
