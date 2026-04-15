@@ -1,9 +1,9 @@
 ﻿{
     "preferred_asset":  "DeadlockTweaker.exe",
-    "version":  "1.0.6",
-    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.0.6/DeadlockTweaker.exe",
+    "version":  "1.1.0",
+    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.0/DeadlockTweaker.exe",
     "repo":  "d1n4styy/deadlock-tweaker",
-    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.0.6",
+    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.0",
     "latest_api_url":  "https://api.github.com/repos/d1n4styy/deadlock-tweaker/releases/latest",
-    "notes":  "Fix invisible window on startup; add installer with shortcuts"
+    "notes":  "UI improvements and bug fixes"
 }

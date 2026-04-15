@@ -1,6 +1,6 @@
 ﻿# ── Quick-patch loader — MUST be first (frozen builds only) ──────────────────
 # If deadlock_patch.py sits next to the exe (from a -Quick release), exec it
-# instead of the bundled code.  An env-guard prevents re-entry.
+# instead of the bundled code. An env-guard prevents re-entry.
 import sys as _sys, os as _os
 if getattr(_sys, 'frozen', False) and not _os.environ.get('_DT_PATCHED'):
     from pathlib import Path as _PP
@@ -13,7 +13,6 @@ if getattr(_sys, 'frozen', False) and not _os.environ.get('_DT_PATCHED'):
             exec(compile(_patch_src, str(_pf), 'exec'), {'__name__': '__main__'})
             _sys.exit(0)
         except Exception:
-            # Bad patch — delete it, fall through to bundled code
             try:
                 _pf.unlink()
             except Exception:
@@ -41,7 +40,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem,
 )
 from PyQt6.QtCore import Qt, QSize, QTimer, QThread, QObject, pyqtSignal, QPropertyAnimation, QEasingCurve, QElapsedTimer, QRect, QRectF, QPoint
-from PyQt6.QtGui import QFont, QColor, QPainter, QBrush, QPixmap, QPen, QPainterPath, QBitmap, QRegion
+from PyQt6.QtGui import QFont, QColor, QPainter, QBrush, QPixmap, QPen, QPainterPath
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Palette
@@ -108,14 +107,14 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.1.0"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
 UPDATE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 UPDATE_ASSET_NAME = "DeadlockTweaker.exe"
-PATCH_ASSET_NAME  = "main_patch.py"   # code-only quick-release patch
+PATCH_ASSET_NAME  = "deadlock_patch.py"   # code-only quick-release patch
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Refresh-rate aware animation helpers
@@ -145,11 +144,7 @@ STEAM_AUTOEXEC_ARG  = "+exec autoexec.cfg"
 CONFIG_PATH         = Path(
     r"C:\Program Files (x86)\Steam\steamapps\common\Deadlock\game\citadel\cfg\autoexec.cfg"
 )
-PROFILES_PATH = (
-    Path(sys.executable).parent / "profiles.json"
-    if getattr(sys, "frozen", False)
-    else Path(__file__).resolve().parent / "profiles.json"
-)
+PROFILES_PATH = Path(__file__).resolve().parent / "profiles.json"
 HEALTHBARS_COMMANDS = [
     "citadel_healthbars_enabled false",
     "citadel_unit_status_use_new true",
@@ -564,13 +559,43 @@ class GameWatcher(QObject):
 
     def check(self):
         try:
-            result = subprocess.run(
-                ["tasklist", "/NH"],
-                capture_output=True, text=True, timeout=3,
-                creationflags=0x08000000  # CREATE_NO_WINDOW
-            )
-            out = result.stdout.lower()
-            found = "deadlock.exe" in out or "project8.exe" in out
+            # Use Windows TlHelp32 API directly — avoids subprocess pipe reader
+            # threads that crash inside QThread on Python 3.14.
+            import ctypes, ctypes.wintypes
+            TH32CS_SNAPPROCESS = 0x00000002
+
+            class PROCESSENTRY32(ctypes.Structure):
+                _fields_ = [
+                    ("dwSize",              ctypes.wintypes.DWORD),
+                    ("cntUsage",            ctypes.wintypes.DWORD),
+                    ("th32ProcessID",       ctypes.wintypes.DWORD),
+                    ("th32DefaultHeapID",   ctypes.POINTER(ctypes.c_ulong)),
+                    ("th32ModuleID",        ctypes.wintypes.DWORD),
+                    ("cntThreads",          ctypes.wintypes.DWORD),
+                    ("th32ParentProcessID", ctypes.wintypes.DWORD),
+                    ("pcPriClassBase",      ctypes.c_long),
+                    ("dwFlags",             ctypes.wintypes.DWORD),
+                    ("szExeFile",           ctypes.c_char * 260),
+                ]
+
+            kernel32 = ctypes.windll.kernel32
+            snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+            _INVALID = ctypes.wintypes.HANDLE(-1).value
+            found = False
+            if snapshot != _INVALID:
+                try:
+                    entry = PROCESSENTRY32()
+                    entry.dwSize = ctypes.sizeof(PROCESSENTRY32)
+                    if kernel32.Process32First(snapshot, ctypes.byref(entry)):
+                        while True:
+                            name = entry.szExeFile.lower()
+                            if name in (b"deadlock.exe", b"project8.exe"):
+                                found = True
+                                break
+                            if not kernel32.Process32Next(snapshot, ctypes.byref(entry)):
+                                break
+                finally:
+                    kernel32.CloseHandle(snapshot)
         except Exception:
             found = False
         if found != self._last_state:
@@ -1607,24 +1632,35 @@ def _normalize_release_version(tag: str) -> str:
     return str(tag or "").strip().lstrip("vV")
 
 
-def _pick_release_assets(assets: list[dict]) -> tuple[str, str]:
-    """
-    Return (patch_url, exe_url) from release asset list.
-    patch_url: URL of main_patch.py if present (quick/small update)
-    exe_url:   URL of DeadlockTweaker.exe  if present (full update)
-    """
-    patch_url = ""
-    exe_url   = ""
+def _pick_release_asset_url(assets: list[dict]) -> str:
     for asset in assets:
-        name = asset.get("name", "")
-        url  = asset.get("browser_download_url", "")
-        if not url:
-            continue
-        if name == PATCH_ASSET_NAME:
-            patch_url = url
-        elif name == UPDATE_ASSET_NAME:
-            exe_url = url
-    return patch_url, exe_url
+        if asset.get("name") == UPDATE_ASSET_NAME and asset.get("browser_download_url"):
+            return asset["browser_download_url"]
+
+    for asset in assets:
+        name = str(asset.get("name", "")).lower()
+        if name.endswith(".exe") and asset.get("browser_download_url"):
+            return asset["browser_download_url"]
+
+    for asset in assets:
+        if asset.get("browser_download_url"):
+            return asset["browser_download_url"]
+
+    return ""
+
+
+def _pick_patch_asset_url(assets: list[dict]) -> str:
+    """Return download URL if release contains a quick-patch .py file."""
+    for asset in assets:
+        if asset.get("name") == PATCH_ASSET_NAME and asset.get("browser_download_url"):
+            return asset["browser_download_url"]
+    return ""
+
+
+def _patch_file_path() -> Path:
+    """Path where the downloaded patch script should be placed."""
+    return _app_dir() / "deadlock_patch.py"
+
 
 
 class UpdateChecker(QObject):
@@ -1643,18 +1679,18 @@ class UpdateChecker(QObject):
             if not version:
                 raise RuntimeError("Latest release has no tag name")
 
-            patch_url, exe_url = _pick_release_assets(release.get("assets") or [])
-            download_url = patch_url or exe_url
-            if not download_url:
+            download_url = _pick_release_asset_url(release.get("assets") or [])
+            patch_url    = _pick_patch_asset_url(release.get("assets") or [])
+            if not download_url and not patch_url:
                 raise RuntimeError(
-                    "Latest release has no downloadable asset"
+                    f"Latest release has no downloadable asset '{UPDATE_ASSET_NAME}'"
                 )
 
             self.finished.emit({
                 "version": version,
                 "notes": (release.get("body") or "").strip(),
                 "download_url": download_url,
-                "is_patch": bool(patch_url),
+                "patch_url": patch_url,
                 "html_url": release.get("html_url", UPDATE_RELEASES_URL),
             })
         except Exception as exc:
@@ -1698,13 +1734,7 @@ def _app_dir() -> Path:
 
 
 def _update_exe_path() -> Path:
-    # Staged name — avoids locking the currently running exe
-    return _app_dir() / "DeadlockTweaker_new.exe"
-
-
-def _patch_file_path() -> Path:
-    """Path for a downloaded quick-patch (tiny main_patch.py)."""
-    return _app_dir() / "deadlock_patch.py"
+    return _app_dir() / "DeadlockTweaker_update.exe"
 
 
 def _update_meta_path() -> Path:
@@ -1741,19 +1771,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Deadlock Tweaker v1.0")
-        # Scale initial size and minimum to the primary screen's available area
-        _avail = QApplication.primaryScreen().availableGeometry()
-        _sw, _sh = _avail.width(), _avail.height()
-        _iw = max(900, min(1160, int(_sw * 0.78)))
-        _ih = max(580, min(740, int(_sh * 0.82)))
-        self.setMinimumSize(max(800, int(_sw * 0.55)), max(520, int(_sh * 0.60)))
-        self.resize(_iw, _ih)
+        self.setMinimumSize(1000, 660)
+        self.resize(1160, 740)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setAutoFillBackground(False)
         self._drag_pos = None
-        self._blur_active = False
         self._watcher_thread = None
         self._game_timer = QTimer(self)
         self._cfg_timer = QTimer(self)
@@ -1914,23 +1938,26 @@ class MainWindow(QMainWindow):
         tb.setFixedHeight(44)
         tb.setStyleSheet("QFrame{background:transparent;border:none;}")
         tbh = QHBoxLayout(tb)
-        tbh.setContentsMargins(16, 0, 0, 0)
+        tbh.setContentsMargins(16, 0, 12, 0)
         tbh.setSpacing(0)
         tbh.addStretch()
 
         for sym, action in [("─", self.showMinimized), ("□", self._toggle_max), ("✕", self.close)]:
             b = QPushButton(sym)
-            # Fill full height of title bar; width matches height → square hit area
-            b.setFixedSize(44, 44)
+            b.setFixedSize(36, 44)
             b.setStyleSheet(
                 f"QPushButton{{background:transparent;color:{C_TEXT_DIM};border:none;"
-                f"font-size:14px;border-radius:0px;padding:0px;}}"
+                f"font-size:14px;border-radius:6px;}}"
                 f"QPushButton:hover{{background:{_THEMES[_CURRENT_THEME]['titlebar_hover']};color:{C_TEXT};}}"
             )
             b.clicked.connect(action)
             tbh.addWidget(b)
             if action == self._toggle_max:
                 self._btn_max = b
+        tb.mousePressEvent  = self._tb_press
+        tb.mouseMoveEvent   = self._tb_move
+        tb.mouseReleaseEvent = self._tb_release
+        self._tb = tb
         rv2.addWidget(tb)
 
         # Stacked pages
@@ -1954,7 +1981,7 @@ class MainWindow(QMainWindow):
         self._pending_is_patch: bool = False
 
         # Remove stale cache if update exe is missing (e.g. after manual cleanup)
-        if not _update_exe_path().exists() and not _patch_file_path().exists():
+        if not _update_exe_path().exists():
             _clear_update_cache()
 
         # Profile system wiring
@@ -1989,25 +2016,6 @@ class MainWindow(QMainWindow):
         for i, btn in enumerate(self._nav_buttons):
             btn.setActive(i == idx)
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._update_input_mask()
-
-    def _update_input_mask(self):
-        """Tell Windows the exact hit-test region so transparent pixels don't let clicks through."""
-        if self._win_maximized:
-            self.clearMask()
-            return
-        bm = QBitmap(self.size())
-        bm.fill(Qt.GlobalColor.color0)
-        p = QPainter(bm)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setBrush(Qt.GlobalColor.color1)
-        p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(bm.rect(), 16, 16)
-        p.end()
-        self.setMask(QRegion(bm))
-
     def paintEvent(self, event):
         super().paintEvent(event)
         if self.isMaximized() or self._win_maximized:
@@ -2017,12 +2025,6 @@ class MainWindow(QMainWindow):
         rect = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
         path = QPainterPath()
         path.addRoundedRect(rect, 16, 16)
-        # Fallback: when acrylic blur is not active, fill with dark background
-        # so the window is visible instead of completely transparent
-        if not self._blur_active:
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(13, 13, 13, 230))
-            painter.drawPath(path)
         painter.setPen(QPen(QColor(255, 255, 255, 22), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
@@ -2042,20 +2044,34 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
-        # Вызываем blur через два прохода event loop — HWND к тому моменту гарантированно
-        # зарегистрирован в DWM и готов принять SetWindowCompositionAttribute
         QTimer.singleShot(0, lambda: self._apply_blur(tries_left=8))
+        QTimer.singleShot(0, self._update_window_region)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_window_region()
+
+    def _update_window_region(self):
+        """SetWindowRgn определяет область hit-testing независимо от alpha-канала,
+        чтобы щелчки мыши не проходили сквозь прозрачные области (WA_TranslucentBackground)."""
+        try:
+            hwnd = int(self.winId())
+            w, h = self.width(), self.height()
+            gdi32 = ctypes.windll.gdi32
+            user32 = ctypes.windll.user32
+            if self.isMaximized() or self._win_maximized:
+                rgn = gdi32.CreateRectRgn(0, 0, w, h)
+            else:
+                rgn = gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, 32, 32)
+            user32.SetWindowRgn(hwnd, rgn, True)
+        except Exception:
+            pass
 
     def _apply_blur(self, tries_left: int = 1):
         if _enable_acrylic_blur(int(self.winId()), tint_color=self._transparency_tint()):
-            self._blur_active = True
-            self.update()
             return
         if tries_left > 1:
             QTimer.singleShot(120, lambda: self._apply_blur(tries_left - 1))
-        else:
-            self._blur_active = False
-            self.update()
 
     def _on_game_status(self, running: bool):
         if running:
@@ -2099,17 +2115,16 @@ class MainWindow(QMainWindow):
         else:
             _apply_reset()
 
-    def _start_update_download(self, version: str, url: str, is_patch: bool = False):
+    def _start_update_download(self, version: str, url: str, dest: str | None = None):
         self._pending_update_version = version
         self._pending_download_url = url
-        self._pending_is_patch = is_patch
         self._upd_btn.setText(f"⏳  Downloading v{version}... 0%")
         self._upd_btn.setEnabled(False)
         self._upd_progress.setVisible(True)
         self._upd_progress.setRange(0, 100)
         self._upd_progress.setValue(0)
 
-        dest = str(_patch_file_path() if is_patch else _update_exe_path())
+        dest = dest or str(_update_exe_path())
         worker = UpdateChecker()
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -2172,33 +2187,52 @@ class MainWindow(QMainWindow):
         thread.start()
 
     def _on_update_result(self, data: dict):
-        latest   = data.get("version", "0")
-        notes    = data.get("notes", "")
-        dl_url   = data.get("download_url", "")
-        is_patch = data.get("is_patch", False)
+        latest    = data.get("version", "0")
+        notes     = data.get("notes", "")
+        dl_url    = data.get("download_url", "")
+        patch_url = data.get("patch_url", "")
 
         if _version_tuple(latest) > _version_tuple(APP_VERSION):
-            if not dl_url:
+            if not dl_url and not patch_url:
                 self._on_update_error("Latest release has no downloadable asset")
                 return
 
-            # ── Cache check: already downloaded this exact version? ──────────
-            cache       = _read_update_cache()
-            cached_ver  = cache.get("cached_version", "")
-            cached_file = _patch_file_path() if is_patch else _update_exe_path()
-            if cached_ver == latest and cached_file.exists():
-                self._upd_progress.setVisible(True)
-                self._upd_progress.setRange(0, 100)
-                self._upd_progress.setValue(100)
-                self._upd_btn.setText(f"✓  v{latest} ready — restarting…")
-                self._upd_btn.setEnabled(False)
-                self._upd_card.set_value("Ready to install", C_GREEN)
-                if is_patch:
-                    QTimer.singleShot(1500, lambda: self._install_patch_and_restart(str(cached_file)))
-                else:
-                    QTimer.singleShot(1500, lambda: self._install_and_restart(str(cached_file)))
+            # ── Confirmation dialog ──────────────────────────────────────────
+            # Reset button to default while dialog is open
+            self._upd_btn.setEnabled(True)
+            self._upd_btn.setText(self._upd_btn_default_text)
+            self._upd_btn.setStyleSheet(self._upd_btn_default_style)
+
+            msg = QMessageBox(self)
+            msg.setWindowTitle("Update available")
+            notes_block = f"\n\nWhat's new:\n{notes}" if notes else ""
+            msg.setText(f"Version {latest} is available.{notes_block}\n\nInstall update now?")
+            msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+            if msg.exec() != QMessageBox.StandardButton.Yes:
+                self._reset_update_ui()
                 return
 
+            # ── Prefer quick-patch if available ─────────────────────────────
+            use_patch = bool(patch_url)
+            url = patch_url if use_patch else dl_url
+
+            # ── Cache check: already downloaded this exact version? ──────────
+            if not use_patch:
+                cache = _read_update_cache()
+                cached_ver = cache.get("cached_version", "")
+                exe = _update_exe_path()
+                if cached_ver == latest and exe.exists():
+                    self._upd_progress.setVisible(True)
+                    self._upd_progress.setRange(0, 100)
+                    self._upd_progress.setValue(100)
+                    self._upd_btn.setText(f"✓  v{latest} ready — restarting…")
+                    self._upd_btn.setEnabled(False)
+                    self._upd_card.set_value("Ready to install", C_GREEN)
+                    QTimer.singleShot(1500, lambda: self._install_and_restart(str(exe)))
+                    return
+
+            self._pending_is_patch = use_patch
             self._upd_btn.setStyleSheet(
                 f"QPushButton{{background:{C_GREEN_GLOW};color:{C_GREEN};"
                 f"border:1px solid {C_GREEN};border-radius:10px;text-align:center;}}"
@@ -2206,7 +2240,8 @@ class MainWindow(QMainWindow):
             )
             if notes:
                 self._upd_btn.setToolTip(f"What's new:\n{notes}")
-            self._start_update_download(latest, dl_url, is_patch=is_patch)
+            dest = str(_patch_file_path()) if use_patch else str(_update_exe_path())
+            self._start_update_download(latest, url, dest)
         else:
             self._upd_btn.setText("✓  Up to date")
             self._upd_btn.setEnabled(True)
@@ -2225,8 +2260,6 @@ class MainWindow(QMainWindow):
         self._upd_btn.setEnabled(True)
         dest = data.get("downloaded", "")
         if dest:
-            _write_update_cache(self._pending_update_version)
-
             self._upd_progress.setVisible(True)
             self._upd_progress.setRange(0, 100)
             self._upd_progress.setValue(100)
@@ -2235,8 +2268,11 @@ class MainWindow(QMainWindow):
             self._pending_download_url = ""
             self._upd_card.set_value("Ready to install", C_GREEN)
             if self._pending_is_patch:
+                self._pending_is_patch = False
                 QTimer.singleShot(1500, lambda: self._install_patch_and_restart(dest))
             else:
+                # Save cache so next "Check for Updates" won't re-download
+                _write_update_cache(self._pending_update_version)
                 QTimer.singleShot(1500, lambda: self._install_and_restart(dest))
         else:
             self._upd_btn.setText("⚠  Download failed")
@@ -2245,57 +2281,50 @@ class MainWindow(QMainWindow):
 
     def _install_and_restart(self, update_exe: str):
         """
-        Replace the running exe with the downloaded update via a batch script,
-        then quit immediately so the file is no longer locked.
-        Also removes any existing quick-patch file (the new exe has latest code).
+        Replace the current executable with update_exe and restart.
+        Works for both frozen (PyInstaller .exe) and source-run modes.
         """
-        import sys, tempfile
-        if getattr(sys, "frozen", False):
-            current_exe = sys.executable
-            patch_file  = str(_patch_file_path())
-            bat_path = os.path.join(tempfile.gettempdir(), "deadlock_selfupdate.bat")
-            try:
-                with open(bat_path, "w", encoding="ascii", errors="replace") as f:
-                    f.write("@echo off\r\n")
-                    f.write("timeout /T 3 /NOBREAK >nul\r\n")
-                    f.write(f'if exist "{patch_file}" del /f "{patch_file}"\r\n')
-                    f.write(f'move /y "{update_exe}" "{current_exe}"\r\n')
-                    f.write(f'start "" "{current_exe}"\r\n')
-                    f.write('del "%~f0"\r\n')
-                subprocess.Popen(
-                    ["cmd.exe", "/c", bat_path],
-                    shell=False,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-            except Exception:
-                try:
-                    os.startfile(update_exe)
-                except Exception:
-                    pass
+        current_exe = sys.executable if getattr(sys, "frozen", False) else None
+
+        if current_exe:
+            # Frozen: use a small batch that waits for this process to exit,
+            # moves the new exe over the old one, then restarts.
+            bat = _app_dir() / "_do_update.bat"
+            bat.write_text(
+                f"@echo off\n"
+                f":wait\n"
+                f"tasklist /fi \"PID eq {os.getpid()}\" | find /i \"python\" >nul 2>&1\n"
+                f"if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)\n"
+                f"move /y \"{update_exe}\" \"{current_exe}\"\n"
+                f"start \"\" \"{current_exe}\"\n"
+                f"del \"%~f0\"\n",
+                encoding="utf-8",
+            )
+            subprocess.Popen(
+                ["cmd.exe", "/c", str(bat)],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                shell=False,
+            )
+        else:
+            # Source mode: just open the downloaded exe (installer/portable)
+            subprocess.Popen([update_exe], shell=False)
+
         _clear_update_cache()
         QApplication.quit()
 
     def _install_patch_and_restart(self, patch_file: str):
         """
-        Quick-patch already downloaded as deadlock_patch.py.
-        Just restart the exe — the patch loader will pick it up automatically.
+        Quick-patch already downloaded as deadlock_patch.py next to the exe.
+        On next launch the quick-patch loader at the top of main.py will exec it.
         """
-        import sys
-        try:
-            if getattr(sys, "frozen", False):
-                subprocess.Popen(
-                    [sys.executable],
-                    shell=False,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-        except Exception:
-            try:
-                os.startfile(sys.executable)
-            except Exception:
-                pass
+        if getattr(sys, "frozen", False):
+            subprocess.Popen(
+                [sys.executable],
+                shell=False,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
         _clear_update_cache()
         QApplication.quit()
-
 
     # ── Profile system ────────────────────────────────────────────────────────
     def _profiles_data(self) -> dict:
@@ -2412,6 +2441,13 @@ class MainWindow(QMainWindow):
         event.accept()
 
     def _toggle_max(self):
+        # If natively maximized (Aero Snap / HTCAPTION double-click), restore directly
+        if self.isMaximized():
+            self._win_maximized = False
+            if hasattr(self, "_btn_max"):
+                self._btn_max.setText("□")
+            self.showNormal()
+            return
         screen = self.screen() or QApplication.primaryScreen()
         work_area = screen.availableGeometry()  # excludes taskbar
 
@@ -2425,7 +2461,6 @@ class MainWindow(QMainWindow):
             self._win_maximized = True
             if hasattr(self, "_btn_max"):
                 self._btn_max.setText("❐")
-            self.clearMask()
         else:
             from_geo = self.geometry()
             to_geo = self._normal_geo if (self._normal_geo and self._normal_geo.isValid()) else \
@@ -2435,7 +2470,6 @@ class MainWindow(QMainWindow):
             self._win_maximized = False
             if hasattr(self, "_btn_max"):
                 self._btn_max.setText("□")
-            # mask will be applied by resizeEvent when geometry updates
 
         # Stop previous animation if still running
         if self._anim_max is not None:
@@ -2473,55 +2507,21 @@ class MainWindow(QMainWindow):
         self._anim_max = timer   # store so we can stop it if needed
 
 
-    def nativeEvent(self, eventType, message):
-        """Handle WM_NCHITTEST for native drag (HTCAPTION) and edge resize.
+    def _tb_press(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint()
+            self._tb.grabMouse()
 
-        We avoid ctypes.from_address() which caused ACCESS_VIOLATION in frozen
-        (PyInstaller) builds.  Instead we copy the raw bytes via ctypes.string_at
-        (safe read) and decode the MSG manually, then use GetCursorPos instead of
-        the lParam screen coordinates for robustness.
-        """
-        if eventType == b"windows_generic_MSG":
-            import ctypes, ctypes.wintypes
-            addr = int(message)
-            if addr == 0:
-                return super().nativeEvent(eventType, message)
-            try:
-                # Read only the 4-byte message-type field at offset +8 inside MSG.
-                # MSG on 64-bit Windows: HWND(8) + UINT(4) + pad(4) + WPARAM(8) + LPARAM(8) …
-                raw = ctypes.string_at(addr + 8, 4)
-                msg_id = int.from_bytes(raw, "little")
-            except Exception:
-                return super().nativeEvent(eventType, message)
+    def _tb_move(self, event):
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            delta = event.globalPosition().toPoint() - self._drag_pos
+            self.move(self.pos() + delta)
+            self._drag_pos = event.globalPosition().toPoint()
 
-            if msg_id == 0x0084:  # WM_NCHITTEST
-                if getattr(self, "_win_maximized", False):
-                    return super().nativeEvent(eventType, message)
-
-                # Use GetCursorPos — avoids reading lParam from the MSG struct.
-                pt = ctypes.wintypes.POINT()
-                ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-                x, y = pt.x, pt.y
-                geo = self.frameGeometry()
-                lx = x - geo.x()
-                ly = y - geo.y()
-                w = self.width()
-                h = self.height()
-                r = 8  # resize border width
-                # Corners (check before edges)
-                if lx <= r and ly <= r:         return True, 13  # HTTOPLEFT
-                if lx >= w - r and ly <= r:     return True, 14  # HTTOPRIGHT
-                if lx <= r and ly >= h - r:     return True, 16  # HTBOTTOMLEFT
-                if lx >= w - r and ly >= h - r: return True, 17  # HTBOTTOMRIGHT
-                # Edges
-                if lx <= r:     return True, 10  # HTLEFT
-                if lx >= w - r: return True, 11  # HTRIGHT
-                if ly <= r:     return True, 12  # HTTOP
-                if ly >= h - r: return True, 15  # HTBOTTOM
-                # Title bar drag area (top 44 px, excluding 3×44=132 px buttons on right)
-                if ly <= 44 and lx < w - 132:
-                    return True, 2  # HTCAPTION
-        return super().nativeEvent(eventType, message)
+    def _tb_release(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = None
+            self._tb.releaseMouse()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2552,7 +2552,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
 
