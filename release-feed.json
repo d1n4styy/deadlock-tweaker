@@ -1,9 +1,9 @@
 ﻿{
     "preferred_asset":  "DeadlockTweaker.exe",
-    "version":  "1.1.0",
-    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.0/DeadlockTweaker.exe",
+    "version":  "1.1.1",
+    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.1/DeadlockTweaker.exe",
     "repo":  "d1n4styy/deadlock-tweaker",
-    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.0",
+    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.1",
     "latest_api_url":  "https://api.github.com/repos/d1n4styy/deadlock-tweaker/releases/latest",
-    "notes":  "UI improvements and bug fixes"
+    "notes":  "Remove transparency slider, fix transparency to 80%"
 }

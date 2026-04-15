@@ -107,8 +107,8 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.0"
-DEFAULT_APP_TRANSPARENCY = 50
+APP_VERSION = "1.1.1"
+DEFAULT_APP_TRANSPARENCY = 80
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
 UPDATE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
@@ -1498,7 +1498,7 @@ def make_dashboard_panel() -> tuple:
     return scroll, _cfg_card, _upd_card, _apply_btn_ref[0] if _apply_btn_ref else None, upd, upd_progress, profile_cb, _btn_add, _btn_del, _sref
 
 
-def make_settings_panel(current_transparency: int = DEFAULT_APP_TRANSPARENCY) -> tuple[QScrollArea, QSlider]:
+def make_settings_panel() -> QScrollArea:
     panel = QWidget()
     panel.setStyleSheet("background:transparent;")
     v = QVBoxLayout(panel)
@@ -1506,32 +1506,12 @@ def make_settings_panel(current_transparency: int = DEFAULT_APP_TRANSPARENCY) ->
     v.setSpacing(16)
     v.addWidget(section_header("Settings", "⚙"))
 
-    transparency_card = QFrame()
-    transparency_card.setStyleSheet(card_style(14))
-    shadow(transparency_card)
-    transparency_layout = QVBoxLayout(transparency_card)
-    transparency_layout.setContentsMargins(16, 14, 16, 14)
-    transparency_layout.setSpacing(10)
-
-    transparency_layout.addWidget(section_header("Window Transparency", "◌"))
-
-    hint = QLabel("Adjust the transparency of the empty application background from 0% to 100%.")
-    hint.setWordWrap(True)
-    hint.setFont(QFont("Segoe UI", 10))
-    hint.setStyleSheet(f"color:{C_TEXT_DIM};background:transparent;border:none;")
-    transparency_layout.addWidget(hint)
-
-    transparency_row = SliderRow("Transparency", f"{current_transparency}%", 0, 100, current_transparency)
-    transparency_row.val_lbl.setText(f"{current_transparency}%")
-    transparency_row.slider.valueChanged.connect(
-        lambda value, label=transparency_row.val_lbl: label.setText(f"{value}%")
-    )
-    transparency_layout.addWidget(transparency_row)
-
-    transparency_layout.addStretch()
-    v.addWidget(transparency_card)
+    stub = QLabel("More settings coming soon.")
+    stub.setFont(QFont("Segoe UI", 10))
+    stub.setStyleSheet(f"color:{C_TEXT_DIM};background:transparent;border:none;")
+    v.addWidget(stub)
     v.addStretch()
-    return make_scroll_panel(panel), transparency_row.slider
+    return make_scroll_panel(panel)
 
 
 def _stub_panel(title: str, icon: str = "") -> QScrollArea:
@@ -1785,9 +1765,6 @@ class MainWindow(QMainWindow):
         self._normal_geo: QRect | None = None
         self._anim_max: QTimer | None = None
         self._transparency_percent = DEFAULT_APP_TRANSPARENCY
-        self._transparency_timer = QTimer(self)
-        self._transparency_timer.setSingleShot(True)
-        self._transparency_timer.timeout.connect(lambda: self._apply_blur(tries_left=2))
 
         outer = QWidget(self)
         outer.setObjectName("outer")
@@ -1991,8 +1968,7 @@ class MainWindow(QMainWindow):
         if btn_del:
             btn_del.clicked.connect(self._on_profile_delete)
         self._profile_cb.currentTextChanged.connect(self._on_profile_switch)
-        settings_panel, self._transparency_slider = make_settings_panel(self._transparency_percent)
-        self._transparency_slider.valueChanged.connect(self._on_transparency_changed)
+        settings_panel = make_settings_panel()
         pages = [
             dashboard_panel,
             make_visuals_panel(),
@@ -2034,13 +2010,6 @@ class MainWindow(QMainWindow):
         alpha = round(255 * (100 - self._transparency_percent) / 100)
         alpha = max(0, min(alpha, 255))
         return (alpha << 24) | 0x0d0d0d
-
-    def _on_transparency_changed(self, value: int):
-        value = max(0, min(value, 100))
-        if value == self._transparency_percent:
-            return
-        self._transparency_percent = value
-        self._transparency_timer.start(45)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -2552,5 +2521,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
