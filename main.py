@@ -87,13 +87,13 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
 UPDATE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
-UPDATE_ASSET_NAME = "DeadlockTweaker-Setup.exe"
+UPDATE_ASSET_NAME = "DeadlockTweaker.exe"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Refresh-rate aware animation helpers
@@ -1667,7 +1667,8 @@ def _app_dir() -> Path:
 
 
 def _update_exe_path() -> Path:
-    return _app_dir() / "DeadlockTweaker-Setup.exe"
+    # Staged name — avoids locking the currently running exe
+    return _app_dir() / "DeadlockTweaker_new.exe"
 
 
 def _update_meta_path() -> Path:
@@ -2189,21 +2190,33 @@ class MainWindow(QMainWindow):
 
     def _install_and_restart(self, update_exe: str):
         """
-        Launch the downloaded Inno Setup installer and quit the app.
-        The installer will replace the application files and can restart it.
+        Replace the running exe with the downloaded update via a batch script,
+        then quit immediately so the file is no longer locked.
+        The batch waits 3 s, moves the new exe over the current one, then restarts.
         """
-        try:
-            subprocess.Popen(
-                [update_exe, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
-                shell=False,
-            )
-        except Exception:
-            # Fallback: open without flags (user clicks through wizard)
+        import sys, tempfile
+        if getattr(sys, "frozen", False):
+            current_exe = sys.executable
+            bat_path = os.path.join(tempfile.gettempdir(), "deadlock_selfupdate.bat")
             try:
-                subprocess.Popen([update_exe], shell=False)
+                with open(bat_path, "w", encoding="ascii", errors="replace") as f:
+                    f.write("@echo off\r\n")
+                    f.write("timeout /T 3 /NOBREAK >nul\r\n")
+                    f.write(f'move /y "{update_exe}" "{current_exe}"\r\n')
+                    f.write(f'start "" "{current_exe}"\r\n')
+                    f.write('del "%~f0"\r\n')
+                subprocess.Popen(
+                    ["cmd.exe", "/c", bat_path],
+                    shell=False,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
             except Exception:
-                os.startfile(update_exe)
-
+                # Fallback: just launch the new exe directly
+                try:
+                    os.startfile(update_exe)
+                except Exception:
+                    pass
+        # If not frozen (dev mode) — nothing to swap, just quit
         _clear_update_cache()
         QApplication.quit()
 
