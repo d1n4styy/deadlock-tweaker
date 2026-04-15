@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem,
 )
 from PyQt6.QtCore import Qt, QSize, QTimer, QThread, QObject, pyqtSignal, QPropertyAnimation, QEasingCurve, QElapsedTimer, QRect, QRectF, QPoint
-from PyQt6.QtGui import QFont, QColor, QPainter, QBrush, QPixmap, QPen, QPainterPath
+from PyQt6.QtGui import QFont, QColor, QPainter, QBrush, QPixmap, QPen, QPainterPath, QBitmap, QRegion
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Palette
@@ -87,7 +87,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -1704,8 +1704,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Deadlock Tweaker v1.0")
-        self.setMinimumSize(1000, 660)
-        self.resize(1160, 740)
+        # Scale initial size and minimum to the primary screen's available area
+        _avail = QApplication.primaryScreen().availableGeometry()
+        _sw, _sh = _avail.width(), _avail.height()
+        _iw = max(900, min(1160, int(_sw * 0.78)))
+        _ih = max(580, min(740, int(_sh * 0.82)))
+        self.setMinimumSize(max(800, int(_sw * 0.55)), max(520, int(_sh * 0.60)))
+        self.resize(_iw, _ih)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
@@ -1888,8 +1893,6 @@ class MainWindow(QMainWindow):
             tbh.addWidget(b)
             if action == self._toggle_max:
                 self._btn_max = b
-        tb.mousePressEvent = self._tb_press
-        tb.mouseMoveEvent = self._tb_move
         rv2.addWidget(tb)
 
         # Stacked pages
@@ -1946,6 +1949,25 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentIndex(idx)
         for i, btn in enumerate(self._nav_buttons):
             btn.setActive(i == idx)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_input_mask()
+
+    def _update_input_mask(self):
+        """Tell Windows the exact hit-test region so transparent pixels don't let clicks through."""
+        if self._win_maximized:
+            self.clearMask()
+            return
+        bm = QBitmap(self.size())
+        bm.fill(Qt.GlobalColor.color0)
+        p = QPainter(bm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setBrush(Qt.GlobalColor.color1)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(bm.rect(), 16, 16)
+        p.end()
+        self.setMask(QRegion(bm))
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -2314,6 +2336,7 @@ class MainWindow(QMainWindow):
             self._win_maximized = True
             if hasattr(self, "_btn_max"):
                 self._btn_max.setText("❐")
+            self.clearMask()
         else:
             from_geo = self.geometry()
             to_geo = self._normal_geo if (self._normal_geo and self._normal_geo.isValid()) else \
@@ -2323,6 +2346,7 @@ class MainWindow(QMainWindow):
             self._win_maximized = False
             if hasattr(self, "_btn_max"):
                 self._btn_max.setText("□")
+            # mask will be applied by resizeEvent when geometry updates
 
         # Stop previous animation if still running
         if self._anim_max is not None:
@@ -2360,15 +2384,36 @@ class MainWindow(QMainWindow):
         self._anim_max = timer   # store so we can stop it if needed
 
 
-    def _tb_press(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint()
-
-    def _tb_move(self, event):
-        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            delta = event.globalPosition().toPoint() - self._drag_pos
-            self.move(self.pos() + delta)
-            self._drag_pos = event.globalPosition().toPoint()
+    def nativeEvent(self, eventType, message):
+        """Handle WM_NCHITTEST for native drag (HTCAPTION) and edge resize."""
+        if eventType == b"windows_generic_MSG":
+            import ctypes, ctypes.wintypes
+            msg = ctypes.wintypes.MSG.from_address(int(message))
+            if msg.message == 0x0084:  # WM_NCHITTEST
+                if self._win_maximized:
+                    return super().nativeEvent(eventType, message)
+                x = ctypes.c_short(msg.lParam & 0xFFFF).value
+                y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
+                geo = self.frameGeometry()
+                lx = x - geo.x()
+                ly = y - geo.y()
+                w = self.width()
+                h = self.height()
+                r = 8  # resize border width
+                # Corners (check before edges)
+                if lx <= r and ly <= r:         return True, 13  # HTTOPLEFT
+                if lx >= w - r and ly <= r:     return True, 14  # HTTOPRIGHT
+                if lx <= r and ly >= h - r:     return True, 16  # HTBOTTOMLEFT
+                if lx >= w - r and ly >= h - r: return True, 17  # HTBOTTOMRIGHT
+                # Edges
+                if lx <= r:     return True, 10  # HTLEFT
+                if lx >= w - r: return True, 11  # HTRIGHT
+                if ly <= r:     return True, 12  # HTTOP
+                if ly >= h - r: return True, 15  # HTBOTTOM
+                # Title bar drag area (top 44 px, excluding 3×44=132 px buttons on right)
+                if ly <= 44 and lx < w - 132:
+                    return True, 2  # HTCAPTION
+        return super().nativeEvent(eventType, message)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
