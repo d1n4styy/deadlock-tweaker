@@ -7,7 +7,6 @@ a = Analysis(
     binaries=[],
     datas=[
         ('logoicon.png', '.'),
-        ('version.json', '.'),
     ],
     hiddenimports=[],
     hookspath=[],
@@ -25,7 +24,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Deadlock Opti v1.0',
+    name='DeadlockTweaker',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
