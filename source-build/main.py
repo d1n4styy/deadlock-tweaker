@@ -1,25 +1,8 @@
-﻿# ── Update bootstrap — explicit quick-patch execution only ───────────────────
+﻿# ── Update bootstrap — dedicated updater mode ────────────────────────────────
 import sys as _sys, os as _os
-if "--dt-run-script" in _sys.argv:
-    from pathlib import Path as _PP
-
-    _idx = _sys.argv.index("--dt-run-script")
-    if _idx + 1 >= len(_sys.argv):
-        raise SystemExit(2)
-
-    _patch_path = _PP(_sys.argv[_idx + 1])
-    _patch_src = _patch_path.read_text(encoding="utf-8-sig")
-    try:
-        _patch_path.unlink()
-    except Exception:
-        pass
-
-    exec(compile(_patch_src, str(_patch_path), "exec"), {
-        "__name__": "__main__",
-        "__file__": str(_patch_path),
-        "__package__": None,
-    })
-    raise SystemExit(0)
+if "--updater" in _sys.argv:
+    from updater import main as _updater_main
+    raise SystemExit(_updater_main())
 # ─────────────────────────────────────────────────────────────────────────────
 import sys
 import os
@@ -27,8 +10,7 @@ import re
 import json
 import subprocess
 import traceback
-import urllib.request
-import urllib.error
+import tempfile
 import winreg
 import ctypes
 import ctypes.wintypes
@@ -44,6 +26,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize, QTimer, QThread, QObject, pyqtSignal, QPropertyAnimation, QEasingCurve, QElapsedTimer, QRect, QRectF, QPoint
 from PyQt6.QtGui import QFont, QColor, QPainter, QBrush, QPixmap, QPen, QPainterPath, QBitmap, QRegion
+import requests
+from packaging.version import InvalidVersion, Version
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Palette
@@ -110,14 +94,14 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.26"
+APP_VERSION = "1.1.27"
+CURRENT_VERSION = APP_VERSION
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
 UPDATE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 UPDATE_ASSET_NAME = "DeadlockTweaker.exe"
-PATCH_ASSET_NAME  = "deadlock_patch.py"   # canonical quick-release asset name
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Refresh-rate aware animation helpers
@@ -1604,24 +1588,35 @@ def _normalize_release_version(tag: str) -> str:
     return str(tag or "").strip().lstrip("vV")
 
 
-def _pick_release_assets(assets: list[dict]) -> tuple[str, str]:
-    """
-    Return (patch_url, exe_url) from release asset list.
-    patch_url: URL of main_patch.py if present (quick/small update)
-    exe_url:   URL of DeadlockTweaker.exe  if present (full update)
-    """
-    patch_url = ""
-    exe_url   = ""
+def _format_release_timestamp(timestamp: str) -> str:
+    if not timestamp:
+        return "Unavailable"
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone()
+        return dt.strftime("%d.%m.%Y, %H:%M")
+    except Exception:
+        return "Unavailable"
+
+
+def _version_value(version_text: str) -> Version:
+    try:
+        return Version(_normalize_release_version(version_text))
+    except InvalidVersion:
+        return Version("0")
+
+
+def _first_release_asset(assets: list[dict]) -> dict | None:
     for asset in assets:
-        name = asset.get("name", "")
-        url  = asset.get("browser_download_url", "")
-        if not url:
-            continue
-        if name == PATCH_ASSET_NAME:
-            patch_url = url
-        elif name == UPDATE_ASSET_NAME:
-            exe_url = url
-    return patch_url, exe_url
+        if asset.get("browser_download_url"):
+            return asset
+    return None
+
+
+def _staging_download_path(asset_name: str, version: str) -> Path:
+    safe_name = Path(asset_name or "update.bin").name
+    staging_dir = Path(tempfile.gettempdir()) / "deadlock_tweaker_updates" / _normalize_release_version(version)
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    return staging_dir / safe_name
 
 
 class UpdateChecker(QObject):
@@ -1632,44 +1627,40 @@ class UpdateChecker(QObject):
 
     def check(self):
         try:
-            req = urllib.request.Request(UPDATE_API_URL, headers=_github_api_headers())
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                release = json.loads(resp.read().decode())
+            resp = requests.get(UPDATE_API_URL, headers=_github_api_headers(), timeout=10)
+            resp.raise_for_status()
+            release = resp.json()
 
             version = _normalize_release_version(release.get("tag_name", ""))
             if not version:
                 raise RuntimeError("Latest release has no tag name")
 
-            patch_url, exe_url = _pick_release_assets(release.get("assets") or [])
-            download_url = patch_url or exe_url
-            if not download_url:
-                raise RuntimeError(
-                    "Latest release has no downloadable asset"
-                )
+            asset = _first_release_asset(release.get("assets") or [])
+            if not asset:
+                raise RuntimeError("Latest release has no downloadable assets")
 
             self.finished.emit({
                 "version": version,
                 "notes": (release.get("body") or "").strip(),
-                "download_url": download_url,
-                "is_patch": bool(patch_url),
+                "asset_name": str(asset.get("name", "update.bin") or "update.bin"),
+                "asset_url": str(asset.get("browser_download_url", "") or ""),
                 "html_url": release.get("html_url", UPDATE_RELEASES_URL),
             })
         except Exception as exc:
             self.error.emit(str(exc))
 
     def download(self, url: str, dest: str):
-        """Download new executable to dest path; emits finished({}) or error."""
+        """Download an update asset to dest path; emits finished({}) or error."""
         try:
-            req = urllib.request.Request(url, headers=_github_api_headers())
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with requests.get(url, headers=_github_api_headers(), timeout=60, stream=True) as resp:
+                resp.raise_for_status()
                 total = int(resp.headers.get("Content-Length") or 0)
                 downloaded = 0
                 self.progress.emit(downloaded, total)
                 with open(dest, "wb") as f:
-                    while True:
-                        chunk = resp.read(262144)
+                    for chunk in resp.iter_content(chunk_size=262144):
                         if not chunk:
-                            break
+                            continue
                         f.write(chunk)
                         downloaded += len(chunk)
                         self.progress.emit(downloaded, total)
@@ -1679,29 +1670,16 @@ class UpdateChecker(QObject):
 
 
 def _version_tuple(v: str):
-    """Convert '1.2.3' → (1, 2, 3) for comparison."""
-    try:
-        return tuple(int(x) for x in v.strip().split("."))
-    except Exception:
-        return (0,)
+    """Convert a version string into a comparable packaging.version.Version."""
+    return _version_value(v)
 
 
-# ── Update cache / install helpers ───────────────────────────────────────────
+# ── Update install helpers ───────────────────────────────────────────────────
 def _app_dir() -> Path:
     """Runtime directory: works for both frozen (PyInstaller) and source."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path(__file__).resolve().parent
-
-
-def _update_exe_path() -> Path:
-    # Staged name — avoids locking the currently running exe
-    return _app_dir() / "DeadlockTweaker_new.exe"
-
-
-def _patch_file_path() -> Path:
-    """Path for a downloaded quick-patch (tiny main_patch.py)."""
-    return _app_dir() / "deadlock_patch.py"
 
 
 def _update_meta_path() -> Path:
@@ -1729,32 +1707,6 @@ def _clear_update_cache() -> None:
         _update_meta_path().unlink(missing_ok=True)
     except Exception:
         pass
-
-
-def _launch_update_helper(parent_pid: int, post_lines: list[str]) -> None:
-    """Run an external helper after the current process exits."""
-    if not getattr(sys, "frozen", False):
-        raise RuntimeError("Update helper is only needed for frozen builds")
-
-    bat = Path(os.environ.get("TEMP") or os.environ.get("TMP") or str(_app_dir())) / "deadlock_selfupdate.bat"
-    script_lines = [
-        "@echo off",
-        "setlocal",
-        ":wait",
-        f'tasklist /fi "PID eq {parent_pid}" | find "{parent_pid}" >nul 2>&1',
-        "if not errorlevel 1 (",
-        "    timeout /t 1 /nobreak >nul",
-        "    goto wait",
-        ")",
-        *post_lines,
-        'del "%~f0"',
-    ]
-    bat.write_text("\r\n".join(script_lines) + "\r\n", encoding="utf-8")
-    subprocess.Popen(
-        ["cmd.exe", "/c", str(bat)],
-        shell=False,
-        creationflags=subprocess.CREATE_NO_WINDOW,
-    )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1971,13 +1923,14 @@ class MainWindow(QMainWindow):
         self._upd_btn_default_style = upd_btn.styleSheet()
         self._upd_thread: QThread | None = None
         self._upd_worker: UpdateChecker | None = None
+        self._release_info_thread: QThread | None = None
+        self._release_info_worker: UpdateChecker | None = None
         self._pending_download_url: str = ""
         self._pending_update_version: str = ""
-        self._pending_is_patch: bool = False
-
-        # Remove stale cache if update exe is missing (e.g. after manual cleanup)
-        if not _update_exe_path().exists() and not _patch_file_path().exists():
-            _clear_update_cache()
+        self._pending_asset_name: str = ""
+        self._last_release_text: str = "Loading..."
+        self._last_release_color: str = C_TEXT_MID
+        self._last_release_tooltip: str = ""
 
         # Profile system wiring
         self._load_profiles_into_cb()
@@ -2110,17 +2063,17 @@ class MainWindow(QMainWindow):
         else:
             _apply_reset()
 
-    def _start_update_download(self, version: str, url: str, is_patch: bool = False):
+    def _start_update_download(self, version: str, url: str, dest: str | None = None):
         self._pending_update_version = version
         self._pending_download_url = url
-        self._pending_is_patch = is_patch
+        self._pending_asset_name = Path(dest).name if dest else "update.bin"
         self._upd_btn.setText(f"⏳  Downloading v{version}... 0%")
         self._upd_btn.setEnabled(False)
         self._upd_progress.setVisible(True)
         self._upd_progress.setRange(0, 100)
         self._upd_progress.setValue(0)
 
-        dest = str(_patch_file_path() if is_patch else _update_exe_path())
+        dest = dest or str(_staging_download_path(self._pending_asset_name, version))
         worker = UpdateChecker()
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -2183,41 +2136,23 @@ class MainWindow(QMainWindow):
         thread.start()
 
     def _on_update_result(self, data: dict):
-        latest   = data.get("version", "0")
-        notes    = data.get("notes", "")
-        dl_url   = data.get("download_url", "")
-        is_patch = data.get("is_patch", False)
+        QTimer.singleShot(0, lambda: self._show_update_ui(data))
 
-        if _version_tuple(latest) > _version_tuple(APP_VERSION):
-            if not dl_url:
+    def _show_update_ui(self, data: dict):
+        latest = str(data.get("version", "0") or "0")
+        notes = str(data.get("notes", "") or "")
+        asset_url = str(data.get("asset_url", "") or "")
+        asset_name = str(data.get("asset_name", "update.bin") or "update.bin")
+
+        if _version_tuple(latest) > _version_tuple(CURRENT_VERSION):
+            if not asset_url:
                 self._on_update_error("Latest release has no downloadable asset")
                 return
 
-            # ── Cache check: already downloaded this exact version? ──────────
-            cache       = _read_update_cache()
-            cached_ver  = cache.get("cached_version", "")
-            cached_file = _patch_file_path() if is_patch else _update_exe_path()
-            if cached_ver == latest and cached_file.exists():
-                self._upd_progress.setVisible(True)
-                self._upd_progress.setRange(0, 100)
-                self._upd_progress.setValue(100)
-                self._upd_btn.setText(f"✓  v{latest} ready — restarting…")
-                self._upd_btn.setEnabled(False)
-                self._upd_card.set_value("Ready to install", C_GREEN)
-                if is_patch:
-                    QTimer.singleShot(1500, lambda: self._install_patch_and_restart(str(cached_file)))
-                else:
-                    QTimer.singleShot(1500, lambda: self._install_and_restart(str(cached_file)))
-                return
-
-            self._upd_btn.setStyleSheet(
-                f"QPushButton{{background:{C_GREEN_GLOW};color:{C_GREEN};"
-                f"border:1px solid {C_GREEN};border-radius:10px;text-align:center;}}"
-                f"QPushButton:hover{{background:{C_GREEN};color:#000;}}"
-            )
             if notes:
                 self._upd_btn.setToolTip(f"What's new:\n{notes}")
-            self._start_update_download(latest, dl_url, is_patch=is_patch)
+
+            self._start_update_download(latest, asset_url, str(_staging_download_path(asset_name, latest)))
         else:
             self._upd_btn.setText("✓  Up to date")
             self._upd_btn.setEnabled(True)
@@ -2236,69 +2171,48 @@ class MainWindow(QMainWindow):
         self._upd_btn.setEnabled(True)
         dest = data.get("downloaded", "")
         if dest:
-            _write_update_cache(self._pending_update_version)
-
             self._upd_progress.setVisible(True)
             self._upd_progress.setRange(0, 100)
             self._upd_progress.setValue(100)
-            self._upd_btn.setText(f"✓  v{self._pending_update_version} — restarting…")
+            self._upd_btn.setText(f"✓  v{self._pending_update_version} — installing…")
             self._upd_btn.setEnabled(False)
             self._pending_download_url = ""
             self._upd_card.set_value("Ready to install", C_GREEN)
-            if self._pending_is_patch:
-                QTimer.singleShot(1500, lambda: self._install_patch_and_restart(dest))
-            else:
-                QTimer.singleShot(1500, lambda: self._install_and_restart(dest))
+            QTimer.singleShot(1500, lambda: self._launch_updater(dest))
         else:
             self._upd_btn.setText("⚠  Download failed")
             self._upd_progress.setVisible(False)
             self._reset_update_ui(delay_ms=4000)
 
-    def _install_and_restart(self, update_exe: str):
-        """
-        Replace the current executable with update_exe and restart.
-        Works for both frozen (PyInstaller .exe) and source-run modes.
-        """
-        if getattr(sys, "frozen", False):
-            current_exe = str(Path(sys.executable))
-            post_lines = [
-                f'del /q "{_app_dir() / "deadlock_patch.py"}" 2>nul',
-                f'del /q "{_app_dir() / "main_patch.py"}" 2>nul',
-                ":retry_move",
-                f'move /y "{update_exe}" "{current_exe}" >nul 2>&1',
-                "if errorlevel 1 (",
-                "    timeout /t 1 /nobreak >nul",
-                "    goto retry_move",
-                ")",
-                f'start "" "{current_exe}"',
-            ]
-            _launch_update_helper(os.getpid(), post_lines)
-        else:
-            # Source mode: just open the downloaded exe (installer/portable)
-            os.startfile(str(update_exe))
-        _clear_update_cache()
-        QApplication.quit()
+    def _launch_updater(self, asset_path: str):
+        target_file = str(Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve())
+        restart_cmd = [sys.executable]
+        if not getattr(sys, "frozen", False):
+            restart_cmd.append(str(Path(__file__).resolve()))
 
-    def _install_patch_and_restart(self, patch_file: str):
-        """
-        Quick-patch already downloaded as deadlock_patch.py.
-        - Frozen: relaunch the exe through an explicit bootstrap flag.
-        - Source: run the patch directly as a new python process, then quit.
-        """
+        updater_args = [
+            "--updater",
+            "--asset", asset_path,
+            "--target-file", target_file,
+            "--restart-cmd", json.dumps(restart_cmd),
+            "--parent-pid", str(os.getpid()),
+        ]
         if getattr(sys, "frozen", False):
-            current_exe = str(Path(sys.executable))
-            _launch_update_helper(
-                os.getpid(),
-                [f'start "" "{current_exe}" --dt-run-script "{patch_file}"'],
-            )
-        else:
             subprocess.Popen(
-                [sys.executable, patch_file],
+                [sys.executable, *updater_args],
                 shell=False,
                 creationflags=subprocess.CREATE_NO_WINDOW,
             )
+        else:
+            subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), *updater_args],
+                shell=False,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+
+        self._shutdown_background_workers()
         _clear_update_cache()
-        QApplication.quit()
+        QTimer.singleShot(0, QApplication.quit)
 
 
     # ── Profile system ────────────────────────────────────────────────────────
@@ -2537,6 +2451,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
