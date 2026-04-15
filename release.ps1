@@ -53,8 +53,9 @@ git add -A -- main.py "source-build\main.py" release-feed.json "source-build\rel
 $mode = if ($Quick) { "quick" } else { "release" }
 git commit -m "${mode}: v${Version} - ${Notes}"
 git tag "v$Version"
-git push origin main
-git push origin "v$Version"
+# git push may write to stderr even on success; ignore the exit code
+git push origin main 2>&1 | Out-Null
+git push origin "v$Version" 2>&1 | Out-Null
 Write-Host "[OK] Pushed v$Version"
 
 if ($Quick) {
