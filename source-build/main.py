@@ -108,7 +108,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -2517,5 +2517,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 

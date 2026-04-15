@@ -108,7 +108,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -145,7 +145,11 @@ STEAM_AUTOEXEC_ARG  = "+exec autoexec.cfg"
 CONFIG_PATH         = Path(
     r"C:\Program Files (x86)\Steam\steamapps\common\Deadlock\game\citadel\cfg\autoexec.cfg"
 )
-PROFILES_PATH = Path(__file__).resolve().parent / "profiles.json"
+PROFILES_PATH = (
+    Path(sys.executable).parent / "profiles.json"
+    if getattr(sys, "frozen", False)
+    else Path(__file__).resolve().parent / "profiles.json"
+)
 HEALTHBARS_COMMANDS = [
     "citadel_healthbars_enabled false",
     "citadel_unit_status_use_new true",
@@ -2517,5 +2521,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 

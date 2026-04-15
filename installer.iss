@@ -1,5 +1,5 @@
 ﻿#define AppName "Deadlock Tweaker"
-#define AppVersion "1.0.4"
+#define AppVersion "1.0.5"
 #define AppPublisher "d1n4styy"
 #define AppURL "https://github.com/d1n4styy/deadlock-tweaker"
 #define AppExeName "DeadlockTweaker.exe"
@@ -38,7 +38,7 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -51,6 +51,10 @@ Name: "{commondesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desk
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
+[Run]
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
+
 
