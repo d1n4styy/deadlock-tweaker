@@ -9,7 +9,8 @@
 param(
     [Parameter(Mandatory)][string]$Version,
     [Parameter(Mandatory)][string]$Notes,
-    [switch]$Quick   # upload main.py as main_patch.py instead of rebuilding
+    [switch]$Quick,  # upload main.py as main_patch.py instead of rebuilding
+    [switch]$ExeOnly # full build but skip installer build/upload
 )
 
 $ErrorActionPreference = "Stop"
@@ -99,23 +100,27 @@ if ($Quick) {
     }
 
     # Build installer with Inno Setup (if available)
-    $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
     $setupPath = $null
-    if (Test-Path $iscc) {
-        Write-Host "Building installer with Inno Setup..." -ForegroundColor Cyan
-        & $iscc "$root\installer.iss"
-        $setupPath = "$root\installer-output\DeadlockTweaker-Setup-v$Version.exe"
-        if (-not (Test-Path $setupPath)) { Write-Warning "Installer not found: $setupPath"; $setupPath = $null }
-        else {
-            # Sign the installer too
-            $sigSetup = Set-AuthenticodeSignature -FilePath $setupPath -Certificate $cert
-            if ($sigSetup.Status -ne "Valid") { Write-Warning ("Installer signing status: " + $sigSetup.Status) }
-            else { Write-Host "[OK] Installer signed" }
-            $mbSetup = [math]::Round((Get-Item $setupPath).Length / 1MB, 1)
-        Write-Host "[OK] Installer built ($mbSetup MB)"
+    if (-not $ExeOnly) {
+        $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+        if (Test-Path $iscc) {
+            Write-Host "Building installer with Inno Setup..." -ForegroundColor Cyan
+            & $iscc "$root\installer.iss"
+            $setupPath = "$root\installer-output\DeadlockTweaker-Setup-v$Version.exe"
+            if (-not (Test-Path $setupPath)) { Write-Warning "Installer not found: $setupPath"; $setupPath = $null }
+            else {
+                # Sign the installer too
+                $sigSetup = Set-AuthenticodeSignature -FilePath $setupPath -Certificate $cert
+                if ($sigSetup.Status -ne "Valid") { Write-Warning ("Installer signing status: " + $sigSetup.Status) }
+                else { Write-Host "[OK] Installer signed" }
+                $mbSetup = [math]::Round((Get-Item $setupPath).Length / 1MB, 1)
+            Write-Host "[OK] Installer built ($mbSetup MB)"
+            }
+        } else {
+            Write-Warning "Inno Setup not found at $iscc - skipping installer build"
         }
     } else {
-        Write-Warning "Inno Setup not found at $iscc - skipping installer build"
+        Write-Host "EXE-ONLY: Skipping installer build/upload" -ForegroundColor Cyan
     }
 
     # Create GitHub release + upload
