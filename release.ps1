@@ -61,11 +61,11 @@ if ($LASTEXITCODE -ne 0) { git push origin "v$Version" 2>$null }
 Write-Host "[OK] Pushed v$Version"
 
 if ($Quick) {
-    # -- QUICK MODE: upload main.py as main_patch.py (~200 KB) ----------------
+    # -- QUICK MODE: upload main.py as deadlock_patch.py (~200 KB) ------------
     Write-Host ""
     Write-Host "QUICK: No PyInstaller rebuild - uploading patch only" -ForegroundColor Cyan
 
-    $patchTemp = "$root\installer-output\main_patch.py"
+    $patchTemp = "$root\installer-output\deadlock_patch.py"
     Copy-Item "$root\main.py" $patchTemp -Force
     $kb = [math]::Round((Get-Item $patchTemp).Length / 1KB, 1)
 
@@ -74,7 +74,7 @@ if ($Quick) {
         --notes $Notes `
         --repo d1n4styy/deadlock-tweaker
 
-    Write-Host ("[OK] Release v" + $Version + " created with main_patch.py (" + $kb + " KB)") -ForegroundColor Green
+    Write-Host ("[OK] Release v" + $Version + " created with deadlock_patch.py (" + $kb + " KB)") -ForegroundColor Green
     Remove-Item $patchTemp -ErrorAction SilentlyContinue
 
 } else {
