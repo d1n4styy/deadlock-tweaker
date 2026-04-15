@@ -1,9 +1,9 @@
 ﻿{
     "preferred_asset":  "DeadlockTweaker.exe",
-    "version":  "1.1.29",
-    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.29/DeadlockTweaker.exe",
+    "version":  "1.1.30",
+    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.30/DeadlockTweaker.exe",
     "repo":  "d1n4styy/deadlock-tweaker",
-    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.29",
+    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.30",
     "latest_api_url":  "https://api.github.com/repos/d1n4styy/deadlock-tweaker/releases/latest",
-    "notes":  "Full release: startup updater window and check-only update button"
+    "notes":  "Quick patch: version bump only"
 }

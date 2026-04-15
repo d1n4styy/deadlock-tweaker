@@ -94,7 +94,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.29"
+APP_VERSION = "1.1.30"
 CURRENT_VERSION = APP_VERSION
 DEFAULT_APP_TRANSPARENCY = 50
 
@@ -2611,6 +2611,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
