@@ -94,7 +94,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.27"
+APP_VERSION = "1.1.28"
 CURRENT_VERSION = APP_VERSION
 DEFAULT_APP_TRANSPARENCY = 50
 
@@ -1313,9 +1313,6 @@ def make_dashboard_panel() -> tuple:
         tr = ToggleRow(lbl, init)
         _sref[key] = tr.toggle
         gcl.addWidget(tr)
-    stamina_row = ComboRow("Stamina Helper", ["Normal", "Enhanced", "Off"])
-    _sref["stamina_helper"] = stamina_row.findChild(QComboBox)
-    gcl.addWidget(stamina_row)
     cd_row = SliderRow("Ability Cooldown", "0.85", 0, 200, 85)
     _sref["ability_cooldown"] = cd_row.slider
     gcl.addWidget(cd_row)
@@ -1547,7 +1544,6 @@ def make_gameplay_panel() -> QScrollArea:
     for lbl, init in [("Auto Sprint", True),
                        ("Slide Enhancer", True), ("Bullet Prediction", True)]:
         cl.addWidget(ToggleRow(lbl, init))
-    cl.addWidget(ComboRow("Stamina Helper", ["Normal", "Enhanced", "Off"]))
     cl.addWidget(SliderRow("Ability Cooldown", "0.85", 0, 200, 85))
     v.addWidget(card)
     v.addStretch()
@@ -2451,6 +2447,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 

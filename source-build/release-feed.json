@@ -1,9 +1,9 @@
 ﻿{
     "preferred_asset":  "DeadlockTweaker.exe",
-    "version":  "1.1.27",
-    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.27/DeadlockTweaker.exe",
+    "version":  "1.1.28",
+    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.28/DeadlockTweaker.exe",
     "repo":  "d1n4styy/deadlock-tweaker",
-    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.27",
+    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.28",
     "latest_api_url":  "https://api.github.com/repos/d1n4styy/deadlock-tweaker/releases/latest",
-    "notes":  "Full release: updater rewrite with installer build"
+    "notes":  "Quick patch: remove stamina helper"
 }
