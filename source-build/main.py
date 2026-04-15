@@ -1,27 +1,25 @@
-﻿# ── Quick-patch loader — MUST be first (frozen builds only) ──────────────────
-# If deadlock_patch.py sits next to the exe (from a -Quick release), exec it
-# instead of the bundled code.  An env-guard prevents re-entry.
+﻿# ── Update bootstrap — explicit quick-patch execution only ───────────────────
 import sys as _sys, os as _os
-if getattr(_sys, 'frozen', False) and not _os.environ.get('_DT_PATCHED'):
+if "--dt-run-script" in _sys.argv:
     from pathlib import Path as _PP
-    _pf = _PP(_sys.executable).parent / 'deadlock_patch.py'
-    if _pf.exists():
-        _os.environ['_DT_PATCHED'] = '1'
-        try:
-            with open(_pf, 'r', encoding='utf-8') as _h:
-                _patch_src = _h.read()
-            exec(compile(_patch_src, str(_pf), 'exec'), {'__name__': '__main__'})
-            try:
-                _pf.unlink()
-            except Exception:
-                pass
-            _sys.exit(0)
-        except Exception:
-            # Bad patch — delete it, fall through to bundled code
-            try:
-                _pf.unlink()
-            except Exception:
-                pass
+
+    _idx = _sys.argv.index("--dt-run-script")
+    if _idx + 1 >= len(_sys.argv):
+        raise SystemExit(2)
+
+    _patch_path = _PP(_sys.argv[_idx + 1])
+    _patch_src = _patch_path.read_text(encoding="utf-8-sig")
+    try:
+        _patch_path.unlink()
+    except Exception:
+        pass
+
+    exec(compile(_patch_src, str(_patch_path), "exec"), {
+        "__name__": "__main__",
+        "__file__": str(_patch_path),
+        "__package__": None,
+    })
+    raise SystemExit(0)
 # ─────────────────────────────────────────────────────────────────────────────
 import sys
 import os
@@ -112,14 +110,14 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.24"
+APP_VERSION = "1.1.25"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
 UPDATE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
 UPDATE_ASSET_NAME = "DeadlockTweaker.exe"
-PATCH_ASSET_NAME  = "main_patch.py"   # code-only quick-release patch
+PATCH_ASSET_NAME  = "deadlock_patch.py"   # canonical quick-release asset name
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Refresh-rate aware animation helpers
@@ -1733,6 +1731,32 @@ def _clear_update_cache() -> None:
         pass
 
 
+def _launch_update_helper(parent_pid: int, post_lines: list[str]) -> None:
+    """Run an external helper after the current process exits."""
+    if not getattr(sys, "frozen", False):
+        raise RuntimeError("Update helper is only needed for frozen builds")
+
+    bat = Path(os.environ.get("TEMP") or os.environ.get("TMP") or str(_app_dir())) / "deadlock_selfupdate.bat"
+    script_lines = [
+        "@echo off",
+        "setlocal",
+        ":wait",
+        f'tasklist /fi "PID eq {parent_pid}" | find "{parent_pid}" >nul 2>&1',
+        "if not errorlevel 1 (",
+        "    timeout /t 1 /nobreak >nul",
+        "    goto wait",
+        ")",
+        *post_lines,
+        'del "%~f0"',
+    ]
+    bat.write_text("\r\n".join(script_lines) + "\r\n", encoding="utf-8")
+    subprocess.Popen(
+        ["cmd.exe", "/c", str(bat)],
+        shell=False,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Main Window
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2232,54 +2256,47 @@ class MainWindow(QMainWindow):
 
     def _install_and_restart(self, update_exe: str):
         """
-        Replace the running exe with the downloaded update via a batch script,
-        then quit immediately so the file is no longer locked.
-        Also removes any existing quick-patch file (the new exe has latest code).
+        Replace the current executable with update_exe and restart.
+        Works for both frozen (PyInstaller .exe) and source-run modes.
         """
-        import sys, tempfile
         if getattr(sys, "frozen", False):
-            current_exe = sys.executable
-            patch_file  = str(_patch_file_path())
-            bat_path = os.path.join(tempfile.gettempdir(), "deadlock_selfupdate.bat")
-            try:
-                with open(bat_path, "w", encoding="ascii", errors="replace") as f:
-                    f.write("@echo off\r\n")
-                    f.write("timeout /T 3 /NOBREAK >nul\r\n")
-                    f.write(f'if exist "{patch_file}" del /f "{patch_file}"\r\n')
-                    f.write(f'move /y "{update_exe}" "{current_exe}"\r\n')
-                    f.write(f'start "" "{current_exe}"\r\n')
-                    f.write('del "%~f0"\r\n')
-                subprocess.Popen(
-                    ["cmd.exe", "/c", bat_path],
-                    shell=False,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-            except Exception:
-                try:
-                    os.startfile(update_exe)
-                except Exception:
-                    pass
+            current_exe = str(Path(sys.executable))
+            post_lines = [
+                f'del /q "{_app_dir() / "deadlock_patch.py"}" 2>nul',
+                f'del /q "{_app_dir() / "main_patch.py"}" 2>nul',
+                ":retry_move",
+                f'move /y "{update_exe}" "{current_exe}" >nul 2>&1',
+                "if errorlevel 1 (",
+                "    timeout /t 1 /nobreak >nul",
+                "    goto retry_move",
+                ")",
+                f'start "" "{current_exe}"',
+            ]
+            _launch_update_helper(os.getpid(), post_lines)
+        else:
+            # Source mode: just open the downloaded exe (installer/portable)
+            os.startfile(str(update_exe))
         _clear_update_cache()
         QApplication.quit()
 
     def _install_patch_and_restart(self, patch_file: str):
         """
         Quick-patch already downloaded as deadlock_patch.py.
-        Just restart the exe — the patch loader will pick it up automatically.
+        - Frozen: relaunch the exe through an explicit bootstrap flag.
+        - Source: run the patch directly as a new python process, then quit.
         """
-        import sys
-        try:
-            if getattr(sys, "frozen", False):
-                subprocess.Popen(
-                    [sys.executable],
-                    shell=False,
-                    creationflags=subprocess.CREATE_NO_WINDOW,
-                )
-        except Exception:
-            try:
-                os.startfile(sys.executable)
-            except Exception:
-                pass
+        if getattr(sys, "frozen", False):
+            current_exe = str(Path(sys.executable))
+            _launch_update_helper(
+                os.getpid(),
+                [f'start "" "{current_exe}" --dt-run-script "{patch_file}"'],
+            )
+        else:
+            subprocess.Popen(
+                [sys.executable, patch_file],
+                shell=False,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
         _clear_update_cache()
         QApplication.quit()
 
@@ -2520,6 +2537,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
