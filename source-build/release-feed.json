@@ -1,9 +1,9 @@
 ﻿{
     "preferred_asset":  "DeadlockTweaker.exe",
-    "version":  "1.1.21",
-    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.21/DeadlockTweaker.exe",
+    "version":  "1.1.22",
+    "download_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/download/v1.1.22/DeadlockTweaker.exe",
     "repo":  "d1n4styy/deadlock-tweaker",
-    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.21",
+    "release_url":  "https://github.com/d1n4styy/deadlock-tweaker/releases/tag/v1.1.22",
     "latest_api_url":  "https://api.github.com/repos/d1n4styy/deadlock-tweaker/releases/latest",
-    "notes":  "Fix update restart: remove stale patch files before launching new EXE"
+    "notes":  "Fix quick patch loader: delete patch after successful execution"
 }

@@ -11,6 +11,10 @@ if getattr(_sys, 'frozen', False) and not _os.environ.get('_DT_PATCHED'):
             with open(_pf, 'r', encoding='utf-8') as _h:
                 _patch_src = _h.read()
             exec(compile(_patch_src, str(_pf), 'exec'), {'__name__': '__main__'})
+            try:
+                _pf.unlink()
+            except Exception:
+                pass
             _sys.exit(0)
         except Exception:
             # Bad patch — delete it, fall through to bundled code
@@ -108,7 +112,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.21"
+APP_VERSION = "1.1.22"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -2516,6 +2520,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
