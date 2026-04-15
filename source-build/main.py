@@ -87,13 +87,13 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
 UPDATE_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 UPDATE_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
-UPDATE_ASSET_NAME = "DeadlockTweaker.exe"
+UPDATE_ASSET_NAME = "DeadlockTweaker-Setup.exe"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Refresh-rate aware animation helpers
@@ -1667,7 +1667,7 @@ def _app_dir() -> Path:
 
 
 def _update_exe_path() -> Path:
-    return _app_dir() / "DeadlockTweaker_update.exe"
+    return _app_dir() / "DeadlockTweaker-Setup.exe"
 
 
 def _update_meta_path() -> Path:
@@ -1871,15 +1871,17 @@ class MainWindow(QMainWindow):
         tb.setFixedHeight(44)
         tb.setStyleSheet("QFrame{background:transparent;border:none;}")
         tbh = QHBoxLayout(tb)
-        tbh.setContentsMargins(16, 0, 12, 0)
+        tbh.setContentsMargins(16, 0, 0, 0)
+        tbh.setSpacing(0)
         tbh.addStretch()
 
         for sym, action in [("─", self.showMinimized), ("□", self._toggle_max), ("✕", self.close)]:
             b = QPushButton(sym)
-            b.setFixedSize(32, 32)
+            # Fill full height of title bar; width matches height → square hit area
+            b.setFixedSize(44, 44)
             b.setStyleSheet(
                 f"QPushButton{{background:transparent;color:{C_TEXT_DIM};border:none;"
-                f"font-size:14px;border-radius:6px;}}"
+                f"font-size:14px;border-radius:0px;padding:0px;}}"
                 f"QPushButton:hover{{background:{_THEMES[_CURRENT_THEME]['titlebar_hover']};color:{C_TEXT};}}"
             )
             b.clicked.connect(action)
@@ -2165,33 +2167,20 @@ class MainWindow(QMainWindow):
 
     def _install_and_restart(self, update_exe: str):
         """
-        Replace the current executable with update_exe and restart.
-        Works for both frozen (PyInstaller .exe) and source-run modes.
+        Launch the downloaded Inno Setup installer and quit the app.
+        The installer will replace the application files and can restart it.
         """
-        current_exe = sys.executable if getattr(sys, "frozen", False) else None
-
-        if current_exe:
-            # Frozen: use a small batch that waits for this process to exit,
-            # moves the new exe over the old one, then restarts.
-            bat = _app_dir() / "_do_update.bat"
-            bat.write_text(
-                f"@echo off\n"
-                f":wait\n"
-                f"tasklist /fi \"PID eq {os.getpid()}\" | find /i \"python\" >nul 2>&1\n"
-                f"if not errorlevel 1 (timeout /t 1 /nobreak >nul & goto wait)\n"
-                f"move /y \"{update_exe}\" \"{current_exe}\"\n"
-                f"start \"\" \"{current_exe}\"\n"
-                f"del \"%~f0\"\n",
-                encoding="utf-8",
-            )
+        try:
             subprocess.Popen(
-                ["cmd.exe", "/c", str(bat)],
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                [update_exe, "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
                 shell=False,
             )
-        else:
-            # Source mode: just open the downloaded exe (installer/portable)
-            subprocess.Popen([update_exe], shell=False)
+        except Exception:
+            # Fallback: open without flags (user clicks through wizard)
+            try:
+                subprocess.Popen([update_exe], shell=False)
+            except Exception:
+                os.startfile(update_exe)
 
         _clear_update_cache()
         QApplication.quit()
