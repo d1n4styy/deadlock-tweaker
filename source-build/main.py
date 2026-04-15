@@ -94,7 +94,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.28"
+APP_VERSION = "1.1.29"
 CURRENT_VERSION = APP_VERSION
 DEFAULT_APP_TRANSPARENCY = 50
 
@@ -1705,6 +1705,60 @@ def _clear_update_cache() -> None:
         pass
 
 
+def _latest_release_info() -> dict:
+    resp = requests.get(UPDATE_API_URL, headers=_github_api_headers(), timeout=10)
+    resp.raise_for_status()
+    release = resp.json()
+
+    version = _normalize_release_version(release.get("tag_name", ""))
+    if not version:
+        raise RuntimeError("Latest release has no tag name")
+
+    asset = _first_release_asset(release.get("assets") or [])
+    if not asset:
+        raise RuntimeError("Latest release has no downloadable assets")
+
+    return {
+        "version": version,
+        "notes": (release.get("body") or "").strip(),
+        "asset_name": str(asset.get("name", "update.bin") or "update.bin"),
+        "asset_url": str(asset.get("browser_download_url", "") or ""),
+        "published_at": release.get("published_at", ""),
+        "html_url": release.get("html_url", UPDATE_RELEASES_URL),
+    }
+
+
+def _release_needs_update(data: dict) -> bool:
+    latest = str(data.get("version", "0") or "0")
+    return _version_tuple(latest) > _version_tuple(CURRENT_VERSION)
+
+
+def _launch_update_process(asset_path: str, target_file: str) -> None:
+    restart_cmd = [sys.executable]
+    if not getattr(sys, "frozen", False):
+        restart_cmd.append(str(Path(__file__).resolve()))
+
+    updater_args = [
+        "--updater",
+        "--asset", asset_path,
+        "--target-file", target_file,
+        "--restart-cmd", json.dumps(restart_cmd),
+        "--parent-pid", str(os.getpid()),
+    ]
+    if getattr(sys, "frozen", False):
+        subprocess.Popen(
+            [sys.executable, *updater_args],
+            shell=False,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    else:
+        subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), *updater_args],
+            shell=False,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Main Window
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2137,18 +2191,12 @@ class MainWindow(QMainWindow):
     def _show_update_ui(self, data: dict):
         latest = str(data.get("version", "0") or "0")
         notes = str(data.get("notes", "") or "")
-        asset_url = str(data.get("asset_url", "") or "")
-        asset_name = str(data.get("asset_name", "update.bin") or "update.bin")
-
-        if _version_tuple(latest) > _version_tuple(CURRENT_VERSION):
-            if not asset_url:
-                self._on_update_error("Latest release has no downloadable asset")
-                return
-
+        if _release_needs_update(data):
             if notes:
                 self._upd_btn.setToolTip(f"What's new:\n{notes}")
-
-            self._start_update_download(latest, asset_url, str(_staging_download_path(asset_name, latest)))
+            self._upd_btn.setText(f"⬆  Update available v{latest}")
+            self._upd_btn.setEnabled(True)
+            self._reset_update_ui(delay_ms=3000)
         else:
             self._upd_btn.setText("✓  Up to date")
             self._upd_btn.setEnabled(True)
@@ -2182,29 +2230,7 @@ class MainWindow(QMainWindow):
 
     def _launch_updater(self, asset_path: str):
         target_file = str(Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve())
-        restart_cmd = [sys.executable]
-        if not getattr(sys, "frozen", False):
-            restart_cmd.append(str(Path(__file__).resolve()))
-
-        updater_args = [
-            "--updater",
-            "--asset", asset_path,
-            "--target-file", target_file,
-            "--restart-cmd", json.dumps(restart_cmd),
-            "--parent-pid", str(os.getpid()),
-        ]
-        if getattr(sys, "frozen", False):
-            subprocess.Popen(
-                [sys.executable, *updater_args],
-                shell=False,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-        else:
-            subprocess.Popen(
-                [sys.executable, str(Path(__file__).resolve()), *updater_args],
-                shell=False,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
+        _launch_update_process(asset_path, target_file)
 
         self._shutdown_background_workers()
         _clear_update_cache()
@@ -2368,24 +2394,6 @@ class MainWindow(QMainWindow):
 
         def _tick():
             t = min(elapsed.elapsed() / anim_ms, 1.0)
-            # smoothstep ease-out: 1-(1-t)^3
-            ease = 1.0 - (1.0 - t) ** 3
-            self.setGeometry(
-                QRect(
-                    round(fx + (tx - fx) * ease),
-                    round(fy + (ty - fy) * ease),
-                    round(fw + (tw - fw) * ease),
-                    round(fh + (th - fh) * ease),
-                )
-            )
-            if t >= 1.0:
-                timer.stop()
-                self._anim_max = None
-
-        timer.timeout.connect(_tick)
-        timer.start()
-        self._anim_max = timer   # store so we can stop it if needed
-
 
     def nativeEvent(self, eventType, message):
         """Handle WM_NCHITTEST for native drag (HTCAPTION) and edge resize."""
@@ -2419,6 +2427,146 @@ class MainWindow(QMainWindow):
         return super().nativeEvent(eventType, message)
 
 
+class StartupUpdateDialog(QDialog):
+    def __init__(self, release_data: dict, parent=None):
+        super().__init__(parent)
+        self._release_data = release_data
+        self._download_worker: UpdateChecker | None = None
+        self._download_thread: QThread | None = None
+        self._build_ui()
+        QTimer.singleShot(0, self._begin_download)
+
+    def _build_ui(self):
+        self.setWindowTitle("Deadlock Tweaker — Update")
+        self.setModal(True)
+        self.setFixedSize(460, 300)
+        self.setStyleSheet(f"QDialog{{background:{C_BG};}}")
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(18, 18, 18, 18)
+
+        card = QFrame()
+        card.setStyleSheet(
+            f"QFrame{{background:{C_CARD};border:1px solid {C_BORDER};border-radius:16px;}}"
+        )
+        outer.addWidget(card)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(22, 20, 22, 20)
+        layout.setSpacing(12)
+
+        logo = QLabel()
+        logo.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        logo_path = Path(__file__).resolve().parent / "logoicon.png"
+        pixmap = QPixmap(str(logo_path))
+        if not pixmap.isNull():
+            logo.setPixmap(
+                pixmap.scaled(92, 92, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            )
+        else:
+            logo.setText("Deadlock Tweaker")
+            logo.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+            logo.setStyleSheet(f"color:{C_GREEN};background:transparent;border:none;")
+        layout.addWidget(logo)
+
+        self._status_lbl = QLabel("Checking for updates...")
+        self._status_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._status_lbl.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        self._status_lbl.setStyleSheet(f"color:{C_TEXT};background:transparent;border:none;")
+        layout.addWidget(self._status_lbl)
+
+        self._detail_lbl = QLabel("Preparing update check...")
+        self._detail_lbl.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._detail_lbl.setWordWrap(True)
+        self._detail_lbl.setFont(QFont("Segoe UI", 9))
+        self._detail_lbl.setStyleSheet(f"color:{C_TEXT_DIM};background:transparent;border:none;")
+        layout.addWidget(self._detail_lbl)
+
+        self._progress = QProgressBar()
+        self._progress.setRange(0, 100)
+        self._progress.setValue(0)
+        self._progress.setVisible(True)
+        self._progress.setFixedHeight(18)
+        self._progress.setStyleSheet(
+            f"QProgressBar{{background:{C_CARD2};border:1px solid {C_BORDER};border-radius:6px;"
+            f"color:{C_TEXT};text-align:center;}}"
+            f"QProgressBar::chunk{{background:{C_GREEN};border-radius:6px;}}"
+        )
+        layout.addWidget(self._progress)
+
+        self._continue_btn = QPushButton("Start without update")
+        self._continue_btn.setFixedHeight(38)
+        self._continue_btn.setVisible(False)
+        self._continue_btn.setStyleSheet(
+            f"QPushButton{{background:{C_CARD2};color:{C_TEXT};border:1px solid {C_BORDER};"
+            f"border-radius:8px;}}"
+            f"QPushButton:hover{{background:#222;color:{C_TEXT};}}"
+        )
+        self._continue_btn.clicked.connect(self.reject)
+        layout.addWidget(self._continue_btn)
+
+    def _begin_download(self):
+        version = str(self._release_data.get("version", "") or "")
+        asset_url = str(self._release_data.get("asset_url", "") or "")
+        asset_name = str(self._release_data.get("asset_name", "update.bin") or "update.bin")
+
+        if not asset_url:
+            self._show_failure("Latest release has no downloadable asset")
+            return
+
+        self._status_lbl.setText(f"Update v{version} found")
+        self._detail_lbl.setText("Downloading update package...")
+        self._progress.setRange(0, 0)
+
+        dest = str(_staging_download_path(asset_name, version))
+        worker = UpdateChecker()
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(lambda: worker.download(asset_url, dest))
+        worker.progress.connect(self._on_download_progress)
+        worker.finished.connect(lambda data: self._on_download_result(data))
+        worker.error.connect(self._on_download_error)
+        worker.finished.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._download_worker = worker
+        self._download_thread = thread
+        thread.start()
+
+    def _on_download_progress(self, downloaded: int, total: int):
+        if total > 0:
+            percent = max(0, min(100, round(downloaded * 100 / total)))
+            self._progress.setRange(0, 100)
+            self._progress.setValue(percent)
+            self._detail_lbl.setText(f"Downloading update... {percent}%")
+        else:
+            self._progress.setRange(0, 0)
+            self._detail_lbl.setText("Downloading update...")
+
+    def _on_download_result(self, data: dict):
+        downloaded = str(data.get("downloaded", "") or "")
+        if downloaded:
+            self._progress.setRange(0, 100)
+            self._progress.setValue(100)
+            self._status_lbl.setText("Installing update...")
+            self._detail_lbl.setText("Updater will replace files and restart the app.")
+            QTimer.singleShot(500, lambda: self._launch_update(downloaded))
+        else:
+            self._on_download_error("Download failed")
+
+    def _on_download_error(self, msg: str):
+        self._status_lbl.setText("Update failed")
+        self._detail_lbl.setText(msg)
+        self._progress.setVisible(False)
+        self._continue_btn.setVisible(True)
+
+    def _launch_update(self, asset_path: str):
+        target_file = str(Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve())
+        _launch_update_process(asset_path, target_file)
+        self.accept()
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 def main():
     # Crisp rendering on HiDPI / fractional-scale displays
@@ -2428,6 +2576,22 @@ def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setStyleSheet("* { font-family: 'Segoe UI'; }")
+
+    release_info = None
+    try:
+        release_info = _latest_release_info()
+    except Exception:
+        release_info = None
+
+    if release_info and _release_needs_update(release_info):
+        dlg = StartupUpdateDialog(release_info)
+        dlg.move(
+            app.primaryScreen().geometry().center().x() - dlg.width() // 2,
+            app.primaryScreen().geometry().center().y() - dlg.height() // 2,
+        )
+        result = dlg.exec()
+        if result == QDialog.DialogCode.Accepted:
+            return
 
     # Show setup dialog if autoexec.cfg is not found
     if not find_autoexec():
@@ -2447,6 +2611,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
