@@ -1,5 +1,5 @@
 ﻿#define AppName "Deadlock Tweaker"
-#define AppVersion "1.1.19"
+#define AppVersion "1.1.20"
 #define AppPublisher "d1n4styy"
 #define AppURL "https://github.com/d1n4styy/deadlock-tweaker"
 #define AppExeName "DeadlockTweaker.exe"
@@ -53,6 +53,7 @@ Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,{#AppName}}"; F
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
+
 
 
 

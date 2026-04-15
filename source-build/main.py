@@ -108,7 +108,7 @@ def set_theme(name: str) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 # App version & update endpoint
 # ──────────────────────────────────────────────────────────────────────────────
-APP_VERSION = "1.1.19"
+APP_VERSION = "1.1.20"
 DEFAULT_APP_TRANSPARENCY = 50
 
 GITHUB_REPO = "d1n4styy/deadlock-tweaker"
@@ -1320,7 +1320,6 @@ def make_dashboard_panel() -> tuple:
     gcl.setSpacing(8)
     gcl.addWidget(section_header("Gameplay", "⚙"))
     for key, lbl, init in [
-        ("auto_parry",       "Auto Parry",        True),
         ("auto_sprint",      "Auto Sprint",        True),
         ("slide_enhancer",   "Slide Enhancer",     True),
         ("bullet_prediction","Bullet Prediction",  True),
@@ -1559,7 +1558,7 @@ def make_gameplay_panel() -> QScrollArea:
     cl = QVBoxLayout(card)
     cl.setContentsMargins(16, 14, 16, 14)
     cl.setSpacing(8)
-    for lbl, init in [("Auto Parry", True), ("Auto Sprint", True),
+    for lbl, init in [("Auto Sprint", True),
                        ("Slide Enhancer", True), ("Bullet Prediction", True)]:
         cl.addWidget(ToggleRow(lbl, init))
     cl.addWidget(ComboRow("Stamina Helper", ["Normal", "Enhanced", "Off"]))
@@ -2517,6 +2516,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
