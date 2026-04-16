@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deadlock Tweaker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══════════════════════ SIDEBAR ═══════════════════════ -->
+  <nav id="sidebar">
+    <div id="logo-wrap">
+      <img id="logo-img" src="../logoicon.png" alt="logo" onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='block'">
+      <span id="logo-fallback" style="display:none">◎</span>
+    </div>
+    <div id="version-lbl">(v1.1.30)</div>
+
+    <div id="nav-list">
+      <button class="nav-btn active"  data-page="0"><span class="nav-icon">⊞</span> Dashboard</button>
+      <button class="nav-btn"         data-page="1"><span class="nav-icon">◎</span> Visuals</button>
+      <button class="nav-btn"         data-page="2"><span class="nav-icon">⚙</span> Gameplay</button>
+      <button class="nav-btn"         data-page="3"><span class="nav-icon">〜</span> Network</button>
+      <button class="nav-btn"         data-page="4"><span class="nav-icon">⊞</span> Hotkeys</button>
+      <button class="nav-btn"         data-page="5"><span class="nav-icon">···</span> Misc</button>
+      <button class="nav-btn"         data-page="6"><span class="nav-icon">⬡</span> Profiles</button>
+      <button class="nav-btn"         data-page="7"><span class="nav-icon">≡</span> Settings</button>
+    </div>
+
+    <div id="status-box">
+      <div class="status-row1">
+        <span id="status-dot">●</span>
+        <span id="status-gl">Game not detected</span>
+      </div>
+      <div class="status-row2">
+        <span id="status-game">Deadlock</span>
+        <span id="status-rv">Not Running</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════ RIGHT ═══════════════════════ -->
+  <div id="right">
+
+    <!-- Title bar -->
+    <div id="titlebar">
+      <button class="win-btn" id="btn-min"   title="Свернуть">─</button>
+      <button class="win-btn" id="btn-max"   title="Развернуть">□</button>
+      <button class="win-btn" id="btn-close" title="Закрыть">✕</button>
+    </div>
+
+    <!-- Content -->
+    <div id="content-wrap">
+
+      <!-- ─── PAGE 0: Dashboard ─── -->
+      <div class="page active" id="page-0">
+        <div class="page-header">
+          <div>
+            <div class="page-title">Dashboard</div>
+            <div class="page-sub">Welcome to Deadlock Tweaker</div>
+          </div>
+          <div id="profile-bar">
+            <select id="profile-select"><option>Default Profile</option></select>
+            <button class="icon-btn" id="btn-profile-add" title="Сохранить профиль">+</button>
+            <button class="icon-btn" id="btn-profile-del" title="Удалить профиль">✕</button>
+          </div>
+        </div>
+
+        <!-- Stat strip -->
+        <div class="stat-strip">
+          <div class="stat-card">
+            <span class="stat-icon">≡</span>
+            <div><div class="stat-title">Active Profile</div><div class="stat-value" id="sc-profile" style="color:var(--text-mid)">Default Profile</div></div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">📄</span>
+            <div><div class="stat-title">Config Detected</div><div class="stat-value" id="sc-cfg" style="color:var(--green)">Detected</div></div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon">⛨</span>
+            <div><div class="stat-title">Protection</div><div class="stat-value" style="color:var(--green)">Enabled</div></div>
+          </div>
+        </div>
+
+        <!-- Grid -->
+        <div class="dash-grid">
+          <!-- Visuals card -->
+          <div class="card">
+            <div class="section-title">◎  Visuals</div>
+            <div class="vstack mt-8">
+              <div class="slider-row"><span class="slider-label">FOV</span><input type="range" class="slider-input" id="s-fov" min="60" max="150" value="110" data-mode="int"><input class="slider-val" id="sv-fov" value="110"></div>
+              <div class="slider-row"><span class="slider-label">Brightness</span><input type="range" class="slider-input" id="s-brightness" min="0" max="200" value="120" data-mode="dec2"><input class="slider-val" id="sv-brightness" value="1.20"></div>
+              <div class="slider-row"><span class="slider-label">Contrast</span><input type="range" class="slider-input" id="s-contrast" min="0" max="200" value="110" data-mode="dec2"><input class="slider-val" id="sv-contrast" value="1.10"></div>
+              <div class="slider-row"><span class="slider-label">Saturation</span><input type="range" class="slider-input" id="s-saturation" min="0" max="200" value="115" data-mode="dec2"><input class="slider-val" id="sv-saturation" value="1.15"></div>
+              <div class="slider-row"><span class="slider-label">Color Vibrance</span><input type="range" class="slider-input" id="s-vibrance" min="0" max="200" value="100" data-mode="dec2"><input class="slider-val" id="sv-vibrance" value="1.00"></div>
+              <div class="slider-row"><span class="slider-label">Sharpen</span><input type="range" class="slider-input" id="s-sharpen" min="0" max="200" value="60" data-mode="dec2"><input class="slider-val" id="sv-sharpen" value="0.60"></div>
+              <!-- ESP row -->
+              <div class="esp-row">
+                <span class="toggle-label">ESP</span>
+                <label class="toggle"><input type="checkbox" id="t-esp" checked><span class="toggle-track"></span></label>
+                <select class="esp-combo" id="esp-mode">
+                  <option>Enemy Highlight</option>
+                  <option>Full ESP</option>
+                  <option>Off</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gameplay card -->
+          <div class="card">
+            <div class="section-title">⚙  Gameplay</div>
+            <div class="vstack mt-8">
+              <div class="toggle-row"><span class="toggle-label">Auto Parry</span><label class="toggle"><input type="checkbox" id="t-auto-parry" checked><span class="toggle-track"></span></label></div>
+              <div class="toggle-row"><span class="toggle-label">Auto Sprint</span><label class="toggle"><input type="checkbox" id="t-auto-sprint" checked><span class="toggle-track"></span></label></div>
+              <div class="toggle-row"><span class="toggle-label">Slide Enhancer</span><label class="toggle"><input type="checkbox" id="t-slide" checked><span class="toggle-track"></span></label></div>
+              <div class="toggle-row"><span class="toggle-label">Bullet Prediction</span><label class="toggle"><input type="checkbox" id="t-bullet" checked><span class="toggle-track"></span></label></div>
+              <div class="combo-row"><span class="combo-label">Stamina Helper</span><select class="combo-select" id="c-stamina"><option>Normal</option><option>Enhanced</option><option>Off</option></select></div>
+              <div class="slider-row"><span class="slider-label">Ability Cooldown</span><input type="range" class="slider-input" id="s-cooldown" min="0" max="200" value="85" data-mode="dec2"><input class="slider-val" id="sv-cooldown" value="0.85"></div>
+            </div>
+          </div>
+
+          <!-- Network card (full width) -->
+          <div class="card card-full">
+            <div class="section-title">〜  Network</div>
+            <div class="vstack mt-8">
+              <div class="ping-row">
+                <span class="toggle-label">Ping Spoof</span>
+                <label class="toggle"><input type="checkbox" id="t-ping" checked><span class="toggle-track"></span></label>
+                <input type="text" class="ping-input" id="ping-val" value="42">
+                <span class="ping-ms">ms</span>
+              </div>
+              <div class="slider-row"><span class="slider-label">Packet Loss</span><input type="range" class="slider-input" id="s-packetloss" min="0" max="100" value="0" data-mode="pct"><input class="slider-val" id="sv-packetloss" value="0%"></div>
+              <div class="combo-row"><span class="combo-label">Rate Limit</span><select class="combo-select" id="c-ratelimit"><option>Disabled</option><option>1 Mbps</option><option>5 Mbps</option><option>10 Mbps</option></select></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── PAGE 1: Visuals ─── -->
+      <div class="page" id="page-1">
+        <div class="section-title mb-8">◎  Visuals</div>
+        <div class="card">
+          <div class="vstack">
+            <div class="slider-row"><span class="slider-label">FOV</span><input type="range" class="slider-input" id="s2-fov" min="60" max="150" value="110" data-mode="int"><input class="slider-val" id="sv2-fov" value="110"></div>
+            <div class="slider-row"><span class="slider-label">Brightness</span><input type="range" class="slider-input" id="s2-brightness" min="0" max="200" value="120" data-mode="dec2"><input class="slider-val" id="sv2-brightness" value="1.20"></div>
+            <div class="slider-row"><span class="slider-label">Contrast</span><input type="range" class="slider-input" id="s2-contrast" min="0" max="200" value="110" data-mode="dec2"><input class="slider-val" id="sv2-contrast" value="1.10"></div>
+            <div class="slider-row"><span class="slider-label">Saturation</span><input type="range" class="slider-input" id="s2-saturation" min="0" max="200" value="115" data-mode="dec2"><input class="slider-val" id="sv2-saturation" value="1.15"></div>
+            <div class="slider-row"><span class="slider-label">Color Vibrance</span><input type="range" class="slider-input" id="s2-vibrance" min="0" max="200" value="100" data-mode="dec2"><input class="slider-val" id="sv2-vibrance" value="1.00"></div>
+            <div class="slider-row"><span class="slider-label">Sharpen</span><input type="range" class="slider-input" id="s2-sharpen" min="0" max="200" value="60" data-mode="dec2"><input class="slider-val" id="sv2-sharpen" value="0.60"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── PAGE 2: Gameplay ─── -->
+      <div class="page" id="page-2">
+        <div class="section-title mb-8">⚙  Gameplay</div>
+        <div class="card">
+          <div class="vstack">
+            <div class="toggle-row"><span class="toggle-label">Auto Parry</span><label class="toggle"><input type="checkbox" id="t2-auto-parry" checked><span class="toggle-track"></span></label></div>
+            <div class="toggle-row"><span class="toggle-label">Auto Sprint</span><label class="toggle"><input type="checkbox" id="t2-auto-sprint" checked><span class="toggle-track"></span></label></div>
+            <div class="toggle-row"><span class="toggle-label">Slide Enhancer</span><label class="toggle"><input type="checkbox" id="t2-slide" checked><span class="toggle-track"></span></label></div>
+            <div class="toggle-row"><span class="toggle-label">Bullet Prediction</span><label class="toggle"><input type="checkbox" id="t2-bullet" checked><span class="toggle-track"></span></label></div>
+            <div class="combo-row"><span class="combo-label">Stamina Helper</span><select class="combo-select" id="c2-stamina"><option>Normal</option><option>Enhanced</option><option>Off</option></select></div>
+            <div class="slider-row"><span class="slider-label">Ability Cooldown</span><input type="range" class="slider-input" id="s2-cooldown" min="0" max="200" value="85" data-mode="dec2"><input class="slider-val" id="sv2-cooldown" value="0.85"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── PAGE 3: Network ─── -->
+      <div class="page" id="page-3">
+        <div class="section-title mb-8">〜  Network</div>
+        <div class="card">
+          <div class="vstack">
+            <div class="ping-row">
+              <span class="toggle-label">Ping Spoof</span>
+              <label class="toggle"><input type="checkbox" id="t3-ping" checked><span class="toggle-track"></span></label>
+              <input type="text" class="ping-input" id="ping-val3" value="42">
+              <span class="ping-ms">ms</span>
+            </div>
+            <div class="slider-row"><span class="slider-label">Packet Loss</span><input type="range" class="slider-input" id="s3-packetloss" min="0" max="100" value="0" data-mode="pct"><input class="slider-val" id="sv3-packetloss" value="0%"></div>
+            <div class="combo-row"><span class="combo-label">Rate Limit</span><select class="combo-select" id="c3-ratelimit"><option>Disabled</option><option>1 Mbps</option><option>5 Mbps</option><option>10 Mbps</option></select></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── PAGE 4: Hotkeys ─── -->
+      <div class="page" id="page-4">
+        <div class="section-title mb-8">⊞  Hotkeys</div>
+        <div class="stub-center">Hotkeys<br>— Скоро —</div>
+      </div>
+
+      <!-- ─── PAGE 5: Misc ─── -->
+      <div class="page" id="page-5">
+        <div class="section-title mb-8">···  Misc</div>
+        <div class="card">
+          <div class="vstack">
+            <div class="toggle-row"><span class="toggle-label">Unlock Console</span><label class="toggle"><input type="checkbox" id="t-console" checked><span class="toggle-track"></span></label></div>
+            <div class="toggle-row"><span class="toggle-label">Remove Fog</span><label class="toggle"><input type="checkbox" id="t-fog" checked><span class="toggle-track"></span></label></div>
+            <div class="toggle-row"><span class="toggle-label">Streamer Mode</span><label class="toggle"><input type="checkbox" id="t-streamer"><span class="toggle-track"></span></label></div>
+            <div class="combo-row"><span class="combo-label">Custom Crosshair</span><select class="combo-select" id="c-crosshair"><option>Crosshair 1</option><option>Crosshair 2</option><option>Off</option></select></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── PAGE 6: Profiles ─── -->
+      <div class="page" id="page-6">
+        <div class="section-title mb-8">⬡  Profiles</div>
+        <div class="stub-center">Profiles<br>— Скоро —</div>
+      </div>
+
+      <!-- ─── PAGE 7: Settings ─── -->
+      <div class="page" id="page-7">
+        <div class="section-title mb-8">≡  Settings</div>
+        <div class="flex-row">
+          <!-- Info card -->
+          <div class="card flex-1">
+            <div class="section-title mb-8">ℹ  Info</div>
+            <div class="vstack">
+              <button class="action-btn green" id="btn-apply">✔  Apply Changes</button>
+              <button class="action-btn red">✕  Discard Changes</button>
+              <button class="action-btn">↺  Reload Game Config</button>
+              <button class="action-btn">↺  Reset All Settings</button>
+            </div>
+            <div class="section-title mt-12 mb-8">Information</div>
+            <div class="info-grid">
+              <span class="info-key">Version</span><span class="info-val" id="info-ver">1.1.30</span>
+              <span class="info-key">Build</span><span class="info-val">2026.04.15</span>
+              <span class="info-key">Author</span><span class="info-val">Deadlock Tweaker Team</span>
+              <span class="info-key">Status</span><span class="info-val green" id="info-status">Up to date</span>
+            </div>
+            <!-- Last updated stat card -->
+            <div class="stat-card mt-12" style="border-radius:12px">
+              <span class="stat-icon">⏰</span>
+              <div><div class="stat-title">Last Updated</div><div class="stat-value" id="sc-lastupdated" style="color:var(--text-mid)">Never</div></div>
+            </div>
+            <button class="action-btn mt-8" id="btn-check-update" style="text-align:center;padding-left:0;border-color:var(--green-dim)">↓  Проверить обновления</button>
+            <div class="upd-progress-wrap mt-8" id="upd-progress-wrap">
+              <div class="upd-progress-fill" id="upd-progress-fill"></div>
+              <span class="upd-progress-lbl" id="upd-progress-lbl">0%</span>
+            </div>
+          </div>
+          <!-- Settings card -->
+          <div class="card flex-1">
+            <div class="section-title mb-8">⚙  Settings</div>
+            <div class="vstack">
+              <div class="setting-group-lbl">Interface</div>
+              <div class="slider-row">
+                <span class="slider-label">UI Scale</span>
+                <input type="range" class="slider-input" id="range-ui-zoom" min="75" max="150" value="100" step="5">
+                <input type="text" class="slider-val" id="lbl-ui-zoom" value="100%" readonly tabindex="-1">
+              </div>
+              <div class="setting-group-lbl mt-12">⚡  Quick Patches</div>
+              <button class="action-btn" id="btn-check-patches">⚡  Проверить патчи</button>
+              <div id="patch-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content-wrap -->
+  </div><!-- /right -->
+</div><!-- /app -->
+
+<!-- Profile name dialog -->
+<div id="profile-dialog" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px 24px;width:380px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <span style="font-size:12px;font-weight:700;color:var(--text)">Сохранить профиль</span>
+      <button id="dlg-close" style="background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:16px;line-height:1">✕</button>
+    </div>
+    <input id="dlg-name" type="text" placeholder="Название профиля..."
+      style="width:100%;height:38px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:0 12px;font-size:10px;outline:none;margin-bottom:4px">
+    <div id="dlg-error" style="color:#ff4c4c;font-size:8px;height:16px"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+      <button id="dlg-cancel" style="height:36px;background:var(--card);color:var(--text-dim);border:1px solid var(--border);border-radius:8px;padding:0 16px;cursor:pointer;font-size:9px">Отмена</button>
+      <button id="dlg-save" style="height:36px;background:var(--green);color:#000;border:none;border-radius:8px;padding:0 20px;cursor:pointer;font-size:9px;font-weight:700">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

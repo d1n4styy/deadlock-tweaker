@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+installer-output/
+
+# Certificates & secrets
+*.pfx
+*.p12
+
+# Large lock file (optional for open source)
+package-lock.json
+
+# Build cache
+.cache/
+build-resources/cache/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.venv/

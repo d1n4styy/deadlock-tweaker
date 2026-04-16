@@ -1,0 +1,65 @@
+{
+  "name": "deadlock-tweaker",
+  "version": "1.1.30",
+  "description": "Deadlock Tweaker - game optimization utility for Deadlock",
+  "author": {
+    "name": "Deadlock Tweaker",
+    "email": "support@deadlocktweaker.app"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64",
+    "dist:portable": "electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "com.deadlocktweaker.app",
+    "productName": "Deadlock Tweaker",
+    "copyright": "Copyright 2026 Deadlock Tweaker",
+    "asar": true,
+    "asarUnpack": [
+      "backend/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "backend/**/*",
+      "logoicon.png",
+      "logoicon.ico",
+      "patches.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "logoicon.ico",
+      "legalTrademarks": "Deadlock Tweaker",
+      "verifyUpdateCodeSignature": false,
+      "requestedExecutionLevel": "asInvoker",
+      "signtoolOptions": {
+        "signingHashAlgorithms": ["sha256"]
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Deadlock Tweaker",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "DeadlockTweaker-Setup-${version}.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^41.2.1",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5"
+  }
+}
